@@ -309,7 +309,7 @@ def load_link_prediction_best_configs(args: argparse.Namespace):
             args.sample_neighbor_strategy = 'recent'
     elif args.model_name in ['DyRep_Pool', 'TGN_Pool']:
         args.num_neighbors = 10
-        args.num_layers = 2
+        args.num_layers = 1
         args.num_heads = 1
         args.pool_kernel_size = 1
         if args.model_name == 'DyRep_Pool':
@@ -326,7 +326,7 @@ def load_link_prediction_best_configs(args: argparse.Namespace):
             elif args.dataset_name in ['enron', 'SocialEvo']:
                 args.dropout = 0.0
             else:
-                args.dropout = 0.1
+                args.dropout = 0.2
         if args.model_name in ['TGN_Pool', 'DyRep_Pool']:
             if args.dataset_name in ['CanParl'] or (args.model_name == 'TGN_Pool' and args.dataset_name == 'UNvote'):
                 args.sample_neighbor_strategy = 'uniform'

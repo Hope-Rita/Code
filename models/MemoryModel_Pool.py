@@ -554,7 +554,7 @@ class GraphAttentionEmbedding(nn.Module):
 
     def __init__(self, node_raw_features: torch.Tensor, edge_raw_features: torch.Tensor, neighbor_sampler: NeighborSampler,
                  time_encoder: TimeEncoder, node_feat_dim: int, edge_feat_dim: int, time_feat_dim: int, pool_kernel_size: int,
-                 num_neighbors: int=20,
+                 num_neighbors: int,
                  num_layers: int = 2, num_heads: int = 2, dropout: float = 0.1):
         """
         Graph attention embedding module.
@@ -593,6 +593,8 @@ class GraphAttentionEmbedding(nn.Module):
         # follow the TGN paper, use merge layer to combine 1) the attention results, and 2) node raw feature + node memory
         self.merge_layers = nn.ModuleList([MergeLayer(input_dim1=self.node_feat_dim + self.edge_feat_dim + self.time_feat_dim, input_dim2=self.node_feat_dim,
                                                       hidden_dim=self.node_feat_dim, output_dim=self.node_feat_dim) for _ in range(num_layers)])
+
+        self.channel_norm = nn.LayerNorm(self.node_feat_dim)
 
     def compute_node_temporal_embeddings(self, node_memories: torch.Tensor, node_ids: np.ndarray, node_interact_times: np.ndarray,
                                          current_layer_num: int, num_neighbors: int):
@@ -660,18 +662,18 @@ class GraphAttentionEmbedding(nn.Module):
             # temporal graph convolution
             # Tensor, output shape (batch_size, num_neighbors, node_feat_dim + time_feat_dim + edge_feat_dim)
 
-            # output = torch.mean(self.temporal_conv_layers[current_layer_num - 1](torch.cat([neighbor_node_conv_features, neighbor_edge_features, neighbor_time_features],
-            #           dim=2)), dim=1)
-
-            output = torch.mean((torch.cat([neighbor_node_conv_features, neighbor_edge_features, neighbor_time_features],
-                                                                                           dim=2)), dim=1)
+            output = torch.mean(self.temporal_conv_layers[current_layer_num - 1](torch.cat([neighbor_node_conv_features, neighbor_edge_features, neighbor_time_features],
+                      dim=2)), dim=1)
+            #
+            # output = torch.mean((torch.cat([neighbor_node_conv_features, neighbor_edge_features, neighbor_time_features],
+            #                                                                                dim=2)), dim=1)
             # output, _ = self.temporal_conv_layers[current_layer_num - 1](node_features=node_conv_features,
             #                                                              node_time_features=node_time_features,
             #                                                              neighbor_masks=neighbor_node_ids)
 
             # Tensor, output shape (batch_size, node_feat_dim)
             # follow the TGN paper, use merge layer to combine 1) the attention results, and 2) node raw feature + node memory
-            output = self.merge_layers[current_layer_num - 1](input_1=output, input_2=node_features)
+            output = self.merge_layers[current_layer_num - 1](input_1=output, input_2=self.channel_norm(node_conv_features))
 
             return output
 
