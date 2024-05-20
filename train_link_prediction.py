@@ -10,6 +10,7 @@ import json
 import torch
 import torch.nn as nn
 
+from models.MemoryModel_Pool import MemoryModel_Pool
 from models.TGAT import TGAT
 from models.TGAT_Pool import TGAT_Pool
 from models.TGAT_Pool import TGAT_Pool as TGAT_MM
@@ -109,13 +110,22 @@ if __name__ == "__main__":
         if args.model_name == 'TGAT':
             dynamic_backbone = TGAT(node_raw_features=node_raw_features, edge_raw_features=edge_raw_features, neighbor_sampler=train_neighbor_sampler,
                                     time_feat_dim=args.time_feat_dim, num_layers=args.num_layers, num_heads=args.num_heads, dropout=args.dropout, device=args.device)
-        elif args.model_name in ['JODIE', 'DyRep', 'TGN', 'DyRep_Pool', 'TGN_Pool']:
+        elif args.model_name in ['JODIE', 'DyRep', 'TGN']:
             # four floats that represent the mean and standard deviation of source and destination node time shifts in the training data, which is used for JODIE
             src_node_mean_time_shift, src_node_std_time_shift, dst_node_mean_time_shift_dst, dst_node_std_time_shift = \
                 compute_src_dst_node_time_shifts(train_data.src_node_ids, train_data.dst_node_ids, train_data.node_interact_times)
             dynamic_backbone = MemoryModel(node_raw_features=node_raw_features, edge_raw_features=edge_raw_features, neighbor_sampler=train_neighbor_sampler, pool_kernel_size = args.pool_kernel_size,
                                            time_feat_dim=args.time_feat_dim, model_name=args.model_name, num_layers=args.num_layers, num_heads=args.num_heads,
                                            dropout=args.dropout, src_node_mean_time_shift=src_node_mean_time_shift, src_node_std_time_shift=src_node_std_time_shift,
+                                           dst_node_mean_time_shift_dst=dst_node_mean_time_shift_dst, dst_node_std_time_shift=dst_node_std_time_shift, device=args.device)
+        elif args.model_name in ['DyRep_Pool', 'TGN_Pool']:
+            # four floats that represent the mean and standard deviation of source and destination node time shifts in the training data, which is used for JODIE
+            src_node_mean_time_shift, src_node_std_time_shift, dst_node_mean_time_shift_dst, dst_node_std_time_shift = \
+                compute_src_dst_node_time_shifts(train_data.src_node_ids, train_data.dst_node_ids, train_data.node_interact_times)
+            dynamic_backbone = MemoryModel_Pool(node_raw_features=node_raw_features, edge_raw_features=edge_raw_features, neighbor_sampler=train_neighbor_sampler, pool_kernel_size = args.pool_kernel_size,
+                                           time_feat_dim=args.time_feat_dim, model_name=args.model_name, num_layers=args.num_layers, num_heads=args.num_heads,
+                                           dropout=args.dropout, src_node_mean_time_shift=src_node_mean_time_shift, src_node_std_time_shift=src_node_std_time_shift,
+                                           num_neighbors=args.num_neighbors,
                                            dst_node_mean_time_shift_dst=dst_node_mean_time_shift_dst, dst_node_std_time_shift=dst_node_std_time_shift, device=args.device)
         elif args.model_name == 'CAWN':
             dynamic_backbone = CAWN(node_raw_features=node_raw_features, edge_raw_features=edge_raw_features, neighbor_sampler=train_neighbor_sampler,

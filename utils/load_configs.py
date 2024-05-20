@@ -52,7 +52,7 @@ def get_link_prediction_args(is_evaluation: bool = False):
     parser.add_argument('--negative_sample_strategy', type=str, default='random', choices=['random', 'historical', 'inductive'],
                         help='strategy for the negative edge sampling')
     parser.add_argument('--identify', type=str, default='', help='the name add in the folder')
-    parser.add_argument('--load_best_configs', action='store_true', default=False, help='whether to load the best configurations')
+    parser.add_argument('--load_best_configs', action='store_true', default=True, help='whether to load the best configurations')
 
     try:
         args = parser.parse_args()

@@ -7,19 +7,19 @@ from utils.utils import NeighborSampler
 from models.modules import TimeEncoder, MergeLayer, TransformerEncoder
 
 
-class MemoryModel(torch.nn.Module):
+class MemoryModel_Pool(torch.nn.Module):
 
     def __init__(self, node_raw_features: np.ndarray, edge_raw_features: np.ndarray, neighbor_sampler: NeighborSampler, pool_kernel_size: int,
-                 time_feat_dim: int, model_name: str = 'TGN', num_layers: int = 2, num_heads: int = 2, dropout: float = 0.1,
+                 time_feat_dim: int, num_neighbors: int=20, model_name: str = 'TGN_Pool', num_layers: int = 2, num_heads: int = 2, dropout: float = 0.1,
                  src_node_mean_time_shift: float = 0.0, src_node_std_time_shift: float = 1.0, dst_node_mean_time_shift_dst: float = 0.0,
                  dst_node_std_time_shift: float = 1.0, device: str = 'cpu'):
         """
-        General framework for memory-based models, support TGN, DyRep and JODIE.
+        General framework for memory-based models, support TGN_Pool, DyRep_Pool and JODIE_Pool.
         :param node_raw_features: ndarray, shape (num_nodes + 1, node_feat_dim)
         :param edge_raw_features: ndarray, shape (num_edges + 1, edge_feat_dim)
         :param neighbor_sampler: NeighborSampler, neighbor sampler
         :param time_feat_dim: int, dimension of time features (encodings)
-        :param model_name: str, name of memory-based models, could be TGN, DyRep or JODIE
+        :param model_name: str, name of memory-based models, could be TGN_Pool, DyRep_Pool or JODIE_Pool
         :param num_layers: int, number of temporal graph convolution layers
         :param num_heads: int, number of attention heads
         :param dropout: float, dropout rate
@@ -29,7 +29,7 @@ class MemoryModel(torch.nn.Module):
         :param dst_node_std_time_shift: float, standard deviation of destination node time shifts
         :param device: str, device
         """
-        super(MemoryModel, self).__init__()
+        super(MemoryModel_Pool, self).__init__()
 
         self.node_raw_features = torch.from_numpy(node_raw_features.astype(np.float32)).to(device)
         self.edge_raw_features = torch.from_numpy(edge_raw_features.astype(np.float32)).to(device)
@@ -46,6 +46,7 @@ class MemoryModel(torch.nn.Module):
         self.dst_node_mean_time_shift_dst = dst_node_mean_time_shift_dst
         self.dst_node_std_time_shift = dst_node_std_time_shift
         self.pool_kernel_size = pool_kernel_size
+        self.num_neighbors = num_neighbors
 
         self.model_name = model_name
         # number of nodes, including the padded node
@@ -61,17 +62,17 @@ class MemoryModel(torch.nn.Module):
 
         # memory modules
         self.memory_bank = MemoryBank(num_nodes=self.num_nodes, memory_dim=self.memory_dim)
-        if self.model_name == 'TGN':
+        if self.model_name == 'TGN_Pool':
             self.memory_updater = GRUMemoryUpdater(memory_bank=self.memory_bank, message_dim=self.message_dim, memory_dim=self.memory_dim)
-        elif self.model_name in ['DyRep', 'JODIE']:
+        elif self.model_name in ['DyRep_Pool', 'JODIE_Pool']:
             self.memory_updater = RNNMemoryUpdater(memory_bank=self.memory_bank, message_dim=self.message_dim, memory_dim=self.memory_dim)
         else:
             raise ValueError(f'Not implemented error for model_name {self.model_name}!')
 
         # embedding module
-        if self.model_name == 'JODIE':
+        if self.model_name == 'JODIE_Pool':
             self.embedding_module = TimeProjectionEmbedding(memory_dim=self.memory_dim, dropout=self.dropout)
-        elif self.model_name in ['TGN', 'DyRep']:
+        elif self.model_name in ['TGN_Pool', 'DyRep_Pool']:
             self.embedding_module = GraphAttentionEmbedding(node_raw_features=self.node_raw_features,
                                                             edge_raw_features=self.edge_raw_features,
                                                             neighbor_sampler=neighbor_sampler,
@@ -82,12 +83,13 @@ class MemoryModel(torch.nn.Module):
                                                             num_layers=self.num_layers,
                                                             pool_kernel_size=self.pool_kernel_size,
                                                             num_heads=self.num_heads,
+                                                            num_neighbors=self.num_neighbors,
                                                             dropout=self.dropout)
         else:
             raise ValueError(f'Not implemented error for model_name {self.model_name}!')
 
     def compute_src_dst_node_temporal_embeddings(self, src_node_ids: np.ndarray, dst_node_ids: np.ndarray, node_interact_times: np.ndarray,
-                                                 edge_ids: np.ndarray, edges_are_positive: bool = True, num_neighbors: int = 20):
+                                                 edge_ids: np.ndarray, num_neighbors: int, edges_are_positive: bool = True):
         """
         compute source and destination node temporal embeddings
         :param src_node_ids: ndarray, shape (batch_size, )
@@ -110,7 +112,7 @@ class MemoryModel(torch.nn.Module):
         updated_node_memories, updated_node_last_updated_times = self.get_updated_memories(node_ids=np.array(range(self.num_nodes)),
                                                                                            node_raw_messages=self.memory_bank.node_raw_messages)
         # compute the node temporal embeddings using the embedding module
-        if self.model_name == 'JODIE':
+        if self.model_name == 'JODIE_Pool':
             # compute differences between the time the memory of a node was last updated, and the time for which we want to compute the embedding of a node
             # Tensor, shape (batch_size, )
             src_node_time_intervals = torch.from_numpy(node_interact_times).float().to(self.device) - updated_node_last_updated_times[torch.from_numpy(src_node_ids)]
@@ -123,8 +125,9 @@ class MemoryModel(torch.nn.Module):
             # Tensor, shape (2 * batch_size, memory_dim), which is equal to (2 * batch_size, node_feat_dim)
             node_embeddings = self.embedding_module.compute_node_temporal_embeddings(node_memories=updated_node_memories,
                                                                                      node_ids=node_ids,
-                                                                                     node_time_intervals=node_time_intervals)
-        elif self.model_name in ['TGN', 'DyRep']:
+                                                                                     node_time_intervals=node_time_intervals,
+                                                                                     num_neighbors=num_neighbors)
+        elif self.model_name in ['TGN_Pool', 'DyRep_Pool']:
             # Tensor, shape (2 * batch_size, node_feat_dim)
             node_embeddings = self.embedding_module.compute_node_temporal_embeddings(node_memories=updated_node_memories,
                                                                                      node_ids=node_ids,
@@ -258,7 +261,7 @@ class MemoryModel(torch.nn.Module):
         :param neighbor_sampler: NeighborSampler, neighbor sampler
         :return:
         """
-        assert self.model_name in ['TGN', 'DyRep'], f'Neighbor sampler is not defined in model {self.model_name}!'
+        assert self.model_name in ['TGN_Pool', 'DyRep_Pool'], f'Neighbor sampler is not defined in model {self.model_name}!'
         self.embedding_module.neighbor_sampler = neighbor_sampler
         if self.embedding_module.neighbor_sampler.sample_neighbor_strategy in ['uniform', 'time_interval_aware']:
             assert self.embedding_module.neighbor_sampler.seed is not None
@@ -551,6 +554,7 @@ class GraphAttentionEmbedding(nn.Module):
 
     def __init__(self, node_raw_features: torch.Tensor, edge_raw_features: torch.Tensor, neighbor_sampler: NeighborSampler,
                  time_encoder: TimeEncoder, node_feat_dim: int, edge_feat_dim: int, time_feat_dim: int, pool_kernel_size: int,
+                 num_neighbors: int=20,
                  num_layers: int = 2, num_heads: int = 2, dropout: float = 0.1):
         """
         Graph attention embedding module.
@@ -579,16 +583,19 @@ class GraphAttentionEmbedding(nn.Module):
         self.pool_kernel_size = pool_kernel_size
         self.dropout = dropout
 
-        self.temporal_conv_layers = nn.ModuleList([TransformerEncoder(attention_dim = self.node_feat_dim + self.edge_feat_dim + self.time_feat_dim,
-                                                                      pool_kernel_size=self.pool_kernel_size,
-                                                                      num_heads=self.num_heads,
-                                                                      dropout=self.dropout) for _ in range(num_layers)])
+        # (self, num_tokens: int, num_channels: int, token_kernel_size: int,
+        # dropout: float, channel_kernel_size: int = 1, channel_dim_expansion_factor: float = 4.0)
+
+        self.temporal_conv_layers = nn.ModuleList([TransformerEncoder(num_tokens=num_neighbors,
+                                                                      num_channels=self.node_feat_dim + self.edge_feat_dim + self.time_feat_dim,
+                                                                      token_kernel_size=pool_kernel_size,
+                                                                      dropout=dropout) for _ in range(num_layers)])
         # follow the TGN paper, use merge layer to combine 1) the attention results, and 2) node raw feature + node memory
-        self.merge_layers = nn.ModuleList([MergeLayer(input_dim1=self.node_feat_dim + self.time_feat_dim, input_dim2=self.node_feat_dim,
+        self.merge_layers = nn.ModuleList([MergeLayer(input_dim1=self.node_feat_dim + self.edge_feat_dim + self.time_feat_dim, input_dim2=self.node_feat_dim,
                                                       hidden_dim=self.node_feat_dim, output_dim=self.node_feat_dim) for _ in range(num_layers)])
 
     def compute_node_temporal_embeddings(self, node_memories: torch.Tensor, node_ids: np.ndarray, node_interact_times: np.ndarray,
-                                         current_layer_num: int, num_neighbors: int = 20):
+                                         current_layer_num: int, num_neighbors: int):
         """
         given memory, node ids node_ids, and the corresponding time node_interact_times,
         return the temporal embeddings after convolution at the current_layer_num
@@ -651,13 +658,16 @@ class GraphAttentionEmbedding(nn.Module):
             # get edge features, shape (batch_size, num_neighbors, edge_feat_dim)
             neighbor_edge_features = self.edge_raw_features[torch.from_numpy(neighbor_edge_ids)]
             # temporal graph convolution
-            # Tensor, output shape (batch_size, node_feat_dim + time_feat_dim)
-            output, _ = self.temporal_conv_layers[current_layer_num - 1](node_features=node_conv_features,
-                                                                         node_time_features=node_time_features,
-                                                                         neighbor_node_features=neighbor_node_conv_features,
-                                                                         neighbor_node_time_features=neighbor_time_features,
-                                                                         neighbor_node_edge_features=neighbor_edge_features,
-                                                                         neighbor_masks=neighbor_node_ids)
+            # Tensor, output shape (batch_size, num_neighbors, node_feat_dim + time_feat_dim + edge_feat_dim)
+
+            # output = torch.mean(self.temporal_conv_layers[current_layer_num - 1](torch.cat([neighbor_node_conv_features, neighbor_edge_features, neighbor_time_features],
+            #           dim=2)), dim=1)
+
+            output = torch.mean((torch.cat([neighbor_node_conv_features, neighbor_edge_features, neighbor_time_features],
+                                                                                           dim=2)), dim=1)
+            # output, _ = self.temporal_conv_layers[current_layer_num - 1](node_features=node_conv_features,
+            #                                                              node_time_features=node_time_features,
+            #                                                              neighbor_masks=neighbor_node_ids)
 
             # Tensor, output shape (batch_size, node_feat_dim)
             # follow the TGN paper, use merge layer to combine 1) the attention results, and 2) node raw feature + node memory
