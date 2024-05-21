@@ -673,7 +673,10 @@ class GraphAttentionEmbedding(nn.Module):
 
             # Tensor, output shape (batch_size, node_feat_dim)
             # follow the TGN paper, use merge layer to combine 1) the attention results, and 2) node raw feature + node memory
-            output = self.merge_layers[current_layer_num - 1](input_1=output, input_2=node_features)
+            # output = self.merge_layers[current_layer_num - 1](input_1=output, input_2=node_features)
+            # output = self.merge_layers[current_layer_num - 1](input_1=output, input_2=node_features) #todo: 是否写错了?
+            assert (node_conv_features-node_features == 0).all()
+            output = self.merge_layers[current_layer_num - 1](input_1=output, input_2=node_conv_features)
 
             return output
 

@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from models.modules import TimeEncoder
+from models.modules import TimeEncoder, FeedForwardNet_Pool
 from utils.utils import NeighborSampler
 
 
@@ -195,35 +195,36 @@ class GraphMixer_Pool(nn.Module):
         return patches_nodes_neighbor_node_raw_features
 
 
-class FeedForwardNet_Pool(nn.Module):
-
-    def __init__(self, kernel_size: int, dropout: float):
-        """
-        two-layered MLP with GELU activation function.
-        :param input_dim: int, dimension of input
-        :param dim_expansion_factor: float, dimension expansion factor
-        :param dropout: float, dropout rate
-        """
-        super(FeedForwardNet_Pool, self).__init__()
-
-        self.kernel_size = kernel_size
-        # print(kernel_size, kernel_size // 2)
-        self.pool = nn.Sequential(
-            nn.AvgPool1d(kernel_size, stride=1, padding= kernel_size // 2, count_include_pad=False,
-                         ),)
-            # nn.GELU(),
-            # nn.Dropout(dropout),
-            # nn.AvgPool1d(kernel_size, stride=1, padding=kernel_size // 2, count_include_pad=False),
-            # nn.Dropout(dropout))
-
-    def forward(self, x: torch.Tensor):
-        """
-        feed forward net forward process
-        :param x: Tensor, shape (*, input_dim)
-        :return:
-        """
-        return self.pool(x) 
-
+# class FeedForwardNet_Pool(nn.Module):
+#
+#     def __init__(self, kernel_size: int, dropout: float):
+#         """
+#         two-layered MLP with GELU activation function.
+#         :param input_dim: int, dimension of input
+#         :param dim_expansion_factor: float, dimension expansion factor
+#         :param dropout: float, dropout rate
+#         """
+#         super(FeedForwardNet_Pool, self).__init__()
+#
+#         self.kernel_size = kernel_size
+#         # print(kernel_size, kernel_size // 2)
+#         self.pool = nn.Sequential(
+#             # nn.AvgPool1d(kernel_size, stride=1, padding= kernel_size // 2, count_include_pad=False,
+#             nn.AvgPool1d(kernel_size, stride=1, padding= kernel_size // 2, count_include_pad=False,
+#                          ),)
+#             # nn.GELU(),
+#             # nn.Dropout(dropout),
+#             # nn.AvgPool1d(kernel_size, stride=1, padding=kernel_size // 2, count_include_pad=False),
+#             # nn.Dropout(dropout))
+#
+#     def forward(self, x: torch.Tensor):
+#         """
+#         feed forward net forward process
+#         :param x: Tensor, shape (*, input_dim)
+#         :return:
+#         """
+#         return self.pool(x)
+#
 
 class FeedForwardNet(nn.Module):
 
@@ -268,7 +269,8 @@ class MLPMixer(nn.Module):
         :param dropout: float, dropout rate
         """
         super(MLPMixer, self).__init__()
-
+        self.num_tokens = num_tokens
+        self.num_channel = num_channels
         self.token_norm = nn.LayerNorm(num_tokens)
         self.token_feedforward = FeedForwardNet_Pool(kernel_size=token_kernel_size, dropout=dropout)
 
@@ -288,8 +290,8 @@ class MLPMixer(nn.Module):
         # Tensor, shape (batch_size, num_channels, num_tokens)
         hidden_tensor = self.token_norm(input_tensor.permute(0, 2, 1))
         # Tensor, shape (batch_size, num_tokens, num_channels)
-        hidden_tensor = self.token_feedforward(hidden_tensor).permute(0, 2, 1)
-        # Tensor, shape (batch_size, num_tokens, num_channels), residual connection
+        hidden_tensor = self.token_feedforward(hidden_tensor.reshape(-1, 1, self.num_tokens)).squeeze(dim=1). \
+            reshape(-1, self.num_channel, self.num_tokens).permute(0, 2, 1)        # Tensor, shape (batch_size, num_tokens, num_channels), residual connection
         output_tensor = hidden_tensor + input_tensor
 
         # mix channels

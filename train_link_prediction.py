@@ -153,6 +153,7 @@ if __name__ == "__main__":
                                     neighbor_sampler=train_neighbor_sampler,
                                     time_feat_dim=args.time_feat_dim, position_feat_dim=args.position_feat_dim,
                                     walk_length=args.walk_length,
+                                    num_neighbors=args.num_neighbors,
                                     num_walk_heads=args.num_walk_heads, dropout=args.dropout, device=args.device, pool_kernel_size = args.pool_kernel_size)
         elif args.model_name == 'TGAT_Pool':
             dynamic_backbone = TGAT_Pool(node_raw_features=node_raw_features, edge_raw_features=edge_raw_features, neighbor_sampler=train_neighbor_sampler, pool_kernel_size=args.pool_kernel_size,
@@ -160,7 +161,8 @@ if __name__ == "__main__":
         elif args.model_name == 'TCL_Pool':
             dynamic_backbone = TCL_Pool(node_raw_features=node_raw_features, edge_raw_features=edge_raw_features, neighbor_sampler=train_neighbor_sampler, pool_kernel_size=args.pool_kernel_size,
                                    time_feat_dim=args.time_feat_dim, num_layers=args.num_layers, num_heads=args.num_heads,
-                                   num_depths=args.num_neighbors + 1, dropout=args.dropout, device=args.device)
+                                   num_depths=args.num_neighbors + 1, dropout=args.dropout, device=args.device,
+                                        num_neighbors=args.num_neighbors,)
         elif args.model_name == 'GraphMixer_Pool':
             dynamic_backbone = GraphMixer_Pool(node_raw_features=node_raw_features, edge_raw_features=edge_raw_features, neighbor_sampler=train_neighbor_sampler,
                                                token_kernel_size = args.token_kernel_size, channel_kernel_size=args.channel_kernel_size,

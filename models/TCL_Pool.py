@@ -9,6 +9,7 @@ from utils.utils import NeighborSampler
 class TCL_Pool(nn.Module):
 
     def __init__(self, node_raw_features: np.ndarray, edge_raw_features: np.ndarray, neighbor_sampler: NeighborSampler, pool_kernel_size: int,
+                num_neighbors: int,
                  time_feat_dim: int, num_layers: int = 2, num_heads: int = 2, num_depths: int = 20, dropout: float = 0.1, device: str = 'cpu'):
         """
         TCL model.
@@ -37,6 +38,8 @@ class TCL_Pool(nn.Module):
         self.dropout = dropout
         self.device = device
 
+        self.num_neighbors = num_neighbors
+
         self.pool_kernel_size = pool_kernel_size
 
         self.time_encoder = TimeEncoder(time_dim=time_feat_dim)
@@ -49,7 +52,11 @@ class TCL_Pool(nn.Module):
         })
 
         self.transformers = nn.ModuleList([
-            TransformerEncoder(attention_dim=self.node_feat_dim, dropout=self.dropout, num_heads=self.num_heads, pool_kernel_size=self.pool_kernel_size)
+            # TransformerEncoder(attention_dim=self.node_feat_dim, dropout=self.dropout, num_heads=self.num_heads, pool_kernel_size=self.pool_kernel_size)
+            TransformerEncoder(num_tokens=self.num_neighbors+1,
+                               num_channels=self.node_feat_dim,
+                               token_kernel_size=pool_kernel_size,
+                               dropout=dropout)
             for _ in range(self.num_layers)
         ])
 
@@ -132,14 +139,14 @@ class TCL_Pool(nn.Module):
         for transformer in self.transformers:
             # self-attention block
             # Tensor, shape (batch_size, num_neighbors + 1, node_feat_dim)
-            src_node_features = transformer(inputs=src_node_features)
+            src_node_features = transformer(src_node_features)
             # Tensor, shape (batch_size, num_neighbors + 1, node_feat_dim)
-            dst_node_features = transformer(inputs=dst_node_features)
+            dst_node_features = transformer(dst_node_features)
             # cross-attention block
             # Tensor, shape (batch_size, num_neighbors + 1, node_feat_dim)
-            src_node_embeddings = transformer(inputs=dst_node_features)
+            src_node_embeddings = transformer(dst_node_features)
             # Tensor, shape (batch_size, num_neighbors + 1, node_feat_dim)
-            dst_node_embeddings = transformer(inputs=src_node_features)
+            dst_node_embeddings = transformer(src_node_features)
 
             src_node_features, dst_node_features = src_node_embeddings, dst_node_embeddings
 

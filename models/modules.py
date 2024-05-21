@@ -386,6 +386,7 @@ class TransformerEncoder_Original(nn.Module):
 
         return outputs
 
+
 class FeedForwardNet_Pool(nn.Module):
 
     def __init__(self, kernel_size: int, dropout: float):
@@ -400,12 +401,15 @@ class FeedForwardNet_Pool(nn.Module):
         self.kernel_size = kernel_size
         # print(kernel_size, kernel_size // 2)
         self.pool = nn.Sequential(
-            nn.AvgPool1d(kernel_size, stride=1, padding= kernel_size // 2, count_include_pad=False,
-                         ),)
-            # nn.GELU(),
-            # nn.Dropout(dropout),
-            # nn.AvgPool1d(kernel_size, stride=1, padding=kernel_size // 2, count_include_pad=False),
-            # nn.Dropout(dropout))
+            # nn.AvgPool1d(kernel_size, stride=1, padding=kernel_size // 2, count_include_pad=False,
+            # nn.Conv2d(in_channels=1, out_channels=1, kernel_size=(1, kernel_size), stride=1, padding=(0, kernel_size // 2),
+            nn.Conv1d(in_channels=1, out_channels=1, kernel_size=kernel_size, stride=1, padding=kernel_size // 2,
+                      ), )
+        # nn.GELU(),
+        # nn.Dropout(dropout),
+        # nn.AvgPool1d(kernel_size, stride=1, padding=kernel_size // 2, count_include_pad=False),
+        # nn.Dropout(dropout))
+
 
     def forward(self, x: torch.Tensor):
         """
@@ -415,9 +419,10 @@ class FeedForwardNet_Pool(nn.Module):
         """
         return self.pool(x)
 
+
 class FeedForwardNet(nn.Module):
 
-    def __init__(self, input_dim: int, dim_expansion_factor: float, dropout: float = 0.0):
+    def __init__(self, input_dim: int, dim_expansion_factor: float, output_dim: int, dropout: float = 0.0):
         """
         two-layered MLP with GELU activation function.
         :param input_dim: int, dimension of input
@@ -429,11 +434,12 @@ class FeedForwardNet(nn.Module):
         self.input_dim = input_dim
         self.dim_expansion_factor = dim_expansion_factor
         self.dropout = dropout
+        self.output_dim = output_dim
 
         self.ffn = nn.Sequential(nn.Linear(in_features=input_dim, out_features=int(dim_expansion_factor * input_dim)),
                                  nn.GELU(),
                                  nn.Dropout(dropout),
-                                 nn.Linear(in_features=int(dim_expansion_factor * input_dim), out_features=input_dim),
+                                 nn.Linear(in_features=int(dim_expansion_factor * input_dim), out_features=output_dim),
                                  nn.Dropout(dropout))
 
     def forward(self, x: torch.Tensor):
@@ -448,7 +454,8 @@ class FeedForwardNet(nn.Module):
 class TransformerEncoder(nn.Module):
 
     def __init__(self, num_tokens: int, num_channels: int, token_kernel_size: int,
-                 dropout: float, channel_kernel_size: int = 1, channel_dim_expansion_factor: float = 4.0):
+                 dropout: float, num_heads: int = 1, channel_kernel_size: int = 1,
+                 channel_dim_expansion_factor: float = 4.0):
         """
         MLP Mixer.
         :param num_tokens: int, number of tokens
@@ -458,14 +465,28 @@ class TransformerEncoder(nn.Module):
         :param dropout: float, dropout rate
         """
         super(TransformerEncoder, self).__init__()
-
+        self.num_tokens = num_tokens
+        self.num_channel = num_channels
         self.token_norm = nn.LayerNorm(num_tokens)
         self.token_feedforward = FeedForwardNet_Pool(kernel_size=token_kernel_size, dropout=dropout)
 
         self.channel_norm = nn.LayerNorm(num_channels)
         self.channel_feedforward = FeedForwardNet(input_dim=num_channels,
-                                                  dim_expansion_factor=channel_dim_expansion_factor,
-                                                  dropout=dropout)  # todo: change
+                                                                 dim_expansion_factor=channel_dim_expansion_factor,
+                                                                 dropout=dropout, output_dim=num_channels)
+
+
+        # assert num_channels % num_heads == 0
+        # token_kernel_sizes = range(1, 2 * num_heads + 1, 2)
+        # self.token_norm = nn.LayerNorm(num_tokens)
+        # self.token_feedforward = nn.ModuleList([FeedForwardNet_Pool(kernel_size=token_i, dropout=dropout)
+        #                                         for token_i in token_kernel_sizes])
+        #
+        # self.channel_norm = nn.LayerNorm(num_channels)
+        # self.channel_feedforward = nn.ModuleList([FeedForwardNet(input_dim=num_channels,
+        #                                                          dim_expansion_factor=channel_dim_expansion_factor,
+        #                                                          dropout=dropout, output_dim=num_channels // num_heads)
+        #                                           for token_i in token_kernel_sizes])
         # self.channel_feedforward = FeedForwardNet_Pool(kernel_size=channel_kernel_size, dropout=dropout)
 
     def forward(self, input_tensor: torch.Tensor):
@@ -479,7 +500,9 @@ class TransformerEncoder(nn.Module):
         # Tensor, shape (batch_size, num_channels, num_tokens)
         hidden_tensor = self.token_norm(input_tensor.permute(0, 2, 1))
         # Tensor, shape (batch_size, num_tokens, num_channels)
-        hidden_tensor = self.token_feedforward(hidden_tensor).permute(0, 2, 1)
+        # hidden_tensor = self.token_feedforward(hidden_tensor.unsqueeze(dim=1)).squeeze(dim=1).permute(0, 2, 1)
+        hidden_tensor = self.token_feedforward(hidden_tensor.reshape(-1, 1, self.num_tokens)).squeeze(dim=1).\
+            reshape(-1, self.num_channel, self.num_tokens).permute(0, 2, 1)
         # Tensor, shape (batch_size, num_tokens, num_channels), residual connection
         output_tensor = hidden_tensor + input_tensor
 
@@ -492,6 +515,7 @@ class TransformerEncoder(nn.Module):
         output_tensor = hidden_tensor + output_tensor
 
         return output_tensor
+
 
 # # pool
 # class TransformerEncoder(nn.Module):

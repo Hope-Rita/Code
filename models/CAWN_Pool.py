@@ -12,6 +12,7 @@ from utils.utils import NeighborSampler
 class CAWN_Pool(nn.Module):
 
     def __init__(self, node_raw_features: np.ndarray, edge_raw_features: np.ndarray, neighbor_sampler: NeighborSampler,
+                 num_neighbors: int,
                  time_feat_dim: int, position_feat_dim: int, walk_length: int = 2, num_walk_heads: int = 8, dropout: float = 0.1, device: str = 'cpu', pool_kernel_size: int = 3):
         """
         Causal anonymous walks network.
@@ -41,12 +42,14 @@ class CAWN_Pool(nn.Module):
         self.dropout = dropout
         self.pool_kernel_size = pool_kernel_size
         self.device = device
+        self.num_neighbors = num_neighbors
 
         self.time_encoder = TimeEncoder(time_dim=time_feat_dim)
 
         self.position_encoder = PositionEncoder(position_feat_dim=self.position_feat_dim, walk_length=self.walk_length, device=device)
 
         self.walk_encoder = WalkEncoder(input_dim=self.node_feat_dim + self.edge_feat_dim + self.time_feat_dim + self.position_feat_dim, pool_kernel_size = self.pool_kernel_size,
+                                        num_neighbors=self.num_neighbors**self.walk_length,
                                         position_feat_dim=self.position_feat_dim, output_dim=self.node_feat_dim, num_walk_heads=self.num_walk_heads, dropout=dropout)
 
     def compute_src_dst_node_temporal_embeddings(self, src_node_ids: np.ndarray, dst_node_ids: np.ndarray,
@@ -295,7 +298,7 @@ class PositionEncoder(nn.Module):
 
 class WalkEncoder(nn.Module):
 
-    def __init__(self, input_dim: int, position_feat_dim: int, output_dim: int, num_walk_heads: int, pool_kernel_size: int, dropout: float = 0.1):
+    def __init__(self, input_dim: int, position_feat_dim: int, num_neighbors, output_dim: int, num_walk_heads: int, pool_kernel_size: int, dropout: float = 0.1):
         """
         Walk encoder that first encodes each random walk by BiLSTM and then aggregates all the walks by the self-attention in Transformer
         :param input_dim: int, dimension of the input
@@ -313,6 +316,7 @@ class WalkEncoder(nn.Module):
         self.num_walk_heads = num_walk_heads
         self.dropout = dropout
         self.pool_kernel_size = pool_kernel_size
+        self.num_neighbors = num_neighbors
         # make sure that the attention dimension can be divided by number of walk heads
         if self.attention_dim % self.num_walk_heads != 0:
             self.attention_dim += (self.num_walk_heads - self.attention_dim % self.num_walk_heads)
@@ -323,7 +327,11 @@ class WalkEncoder(nn.Module):
         self.position_encoder = BiLSTMEncoder(input_dim=self.position_feat_dim, hidden_dim=self.position_feat_dim)
 
         # self.attention_dim = self.feature_encoder.model_dim + self.position_encoder.model_dim
-        self.transformer_encoder = TransformerEncoder(pool_kernel_size = self.pool_kernel_size, attention_dim=self.attention_dim, num_heads=self.num_walk_heads, dropout=self.dropout)
+        # self.transformer_encoder = TransformerEncoder(pool_kernel_size = self.pool_kernel_size, attention_dim=self.attention_dim, num_heads=self.num_walk_heads, dropout=self.dropout)
+        self.transformer_encoder = TransformerEncoder(num_tokens=self.num_neighbors,
+                                                                      num_channels=self.attention_dim,
+                                                                      token_kernel_size=pool_kernel_size,
+                                                                      dropout=dropout)
 
         # due to the usage of BiLSTM, self.feature_encoder.model_dim may not be equal to self.input_dim, since self.input_dim may not be an even number
         # also, self.position_encoder.model_dim may not be equal to self.input_dim, since self.input_dim may not be an even number
@@ -356,7 +364,7 @@ class WalkEncoder(nn.Module):
         # # Tensor, shape (batch_size, num_neighbors ** self.walk_length, self.attention_dim)
         combined_features = self.projection_layers[0](combined_features)
         # Tensor, shape (batch_size, self.feature_encoder.model_dim + self.position_encoder.model_dim)
-        combined_features = self.transformer_encoder(inputs=combined_features).mean(dim=1)
+        combined_features = self.transformer_encoder(combined_features).mean(dim=1)
 
         # # Tensor, shape (batch_size, num_neighbors ** self.walk_length, self.attention_dim)
         # combined_features = self.projection_layers[0](combined_features)
