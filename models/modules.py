@@ -401,10 +401,13 @@ class FeedForwardNet_Pool(nn.Module):
         self.kernel_size = kernel_size
         # print(kernel_size, kernel_size // 2)
         self.pool = nn.Sequential(
-            # nn.AvgPool1d(kernel_size, stride=1, padding=kernel_size // 2, count_include_pad=False,
+            nn.AvgPool1d(1, stride=1, padding=1 // 2, count_include_pad=False),
+            nn.GELU(),
+            nn.Dropout(dropout),
             # nn.Conv2d(in_channels=1, out_channels=1, kernel_size=(1, kernel_size), stride=1, padding=(0, kernel_size // 2),
-            nn.Conv1d(in_channels=1, out_channels=1, kernel_size=kernel_size, stride=1, padding=kernel_size // 2,
-                      ), )
+            nn.Conv1d(in_channels=1, out_channels=1, kernel_size=kernel_size, stride=1, padding=kernel_size // 2,),
+            nn.Dropout(dropout)
+        )
         # nn.GELU(),
         # nn.Dropout(dropout),
         # nn.AvgPool1d(kernel_size, stride=1, padding=kernel_size // 2, count_include_pad=False),
