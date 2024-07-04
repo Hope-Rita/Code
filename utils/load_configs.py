@@ -48,7 +48,7 @@ def get_link_prediction_args(is_evaluation: bool = False):
     parser.add_argument('--val_ratio', type=float, default=0.15, help='ratio of validation set')
     parser.add_argument('--test_ratio', type=float, default=0.15, help='ratio of test set')
     parser.add_argument('--num_runs', type=int, default=5, help='number of runs')
-    parser.add_argument('--test_interval_epochs', type=int, default=10, help='how many epochs to perform testing once')
+    parser.add_argument('--test_interval_epochs', type=int, default=1, help='how many epochs to perform testing once')
     parser.add_argument('--negative_sample_strategy', type=str, default='random', choices=['random', 'historical', 'inductive'],
                         help='strategy for the negative edge sampling')
     parser.add_argument('--identify', type=str, default='', help='the name add in the folder')
@@ -244,8 +244,8 @@ def load_link_prediction_best_configs(args: argparse.Namespace):
         else:
             args.dropout = 0.1
     elif args.model_name == 'DyGFormer_Pool':
-        args.num_layers = 2
-        args.pool_kernel_size = 3
+        args.num_layers = 4
+        args.pool_kernel_size = 1
         # args.max_input_sequence_length = 512
         # args.patch_size = 16
         # args.pool_kernel_size = [1,3,7]
