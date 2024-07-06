@@ -416,21 +416,25 @@ class FeedForwardNet_Pool(nn.Module):
         # nn.AvgPool1d(kernel_size, stride=1, padding=kernel_size // 2, count_include_pad=False),
         # nn.Dropout(dropout))
 
-    def forward(self, x: torch.Tensor, delta_time: torch.Tensor):
+    def forward(self, x: torch.Tensor, delta_time: torch.Tensor=None):
         """
         feed forward net forward process
         :param x: Tensor, shape (*, input_dim)
         :return:
         """
         matrix_total = []
-        delta_times = [delta_time]
         for i in range(self.kernel_size):
-            delt_rolled = torch.roll(delta_time, shifts=i, dims=1)
             rolled_tensor = torch.roll(x, shifts=i, dims=2)
             rolled_tensor[:, :, :i] = 0
-            delt_rolled[:, :i] = 1e20
             matrix_total.append(rolled_tensor)
-            delta_times.append(delta_times[-1]-delt_rolled)
+        # delta_times = [delta_time]
+        # for i in range(self.kernel_size):
+        #     delt_rolled = torch.roll(delta_time, shifts=i, dims=1)
+        #     rolled_tensor = torch.roll(x, shifts=i, dims=2)
+        #     rolled_tensor[:, :, :i] = 0
+        #     delt_rolled[:, :i] = 1e20
+        #     matrix_total.append(rolled_tensor)
+        #     delta_times.append(delta_times[-1]-delt_rolled)
         # matrix_total.append(x)
         # rolled_tensor = torch.roll(x, shifts=1, dims=2)
         # rolled_tensor[:, :, :1] = 0
@@ -439,11 +443,11 @@ class FeedForwardNet_Pool(nn.Module):
         # rolled_tensor[:, :, -1:] = 0
         # matrix_total.append(rolled_tensor)
         matrix_total = torch.stack(matrix_total, dim=-1).to(x.device)
-        delta_times = torch.stack(delta_times[1:], dim=-1).to(x.device)
-        delta_times = torch.softmax(delta_times, dim=-1).unsqueeze(dim=1)
+        # delta_times = torch.stack(delta_times[1:], dim=-1).to(x.device)
+        # delta_times = torch.softmax(delta_times, dim=-1).unsqueeze(dim=1)
         ## 改为时间编码
-        average = (matrix_total * delta_times).sum(dim=-1)
-        # average = (matrix_total * self.kernel).sum(dim=-1)
+        # average = (matrix_total * delta_times).sum(dim=-1)
+        average = (matrix_total * self.kernel).sum(dim=-1)
         return average
 
 class FeedForwardNet(nn.Module):
@@ -524,7 +528,8 @@ class TransformerEncoder(nn.Module):
         # Tensor, shape (batch_size, num_tokens, num_channels)
         # hidden_tensor = self.token_feedforward(hidden_tensor.unsqueeze(dim=1)).squeeze(dim=1).permute(0, 2, 1)
         # hidden_tensor = self.token_feedforward(hidden_tensor, delta_times).mean(dim=-2).reshape(batch_size, num_channels,
-        hidden_tensor = self.token_feedforward(hidden_tensor, delta_times).permute(0, 2, 1)
+        # hidden_tensor = self.token_feedforward(hidden_tensor, delta_times).permute(0, 2, 1)
+        hidden_tensor = self.token_feedforward(hidden_tensor).permute(0, 2, 1)
         # hidden_tensor = self.token_feedforward(hidden_tensor.reshape(-1, 1, self.num_tokens)).squeeze(dim=1).\
         #     reshape(-1, self.num_channel, self.num_tokens).permute(0, 2, 1)
         # Tensor, shape (batch_size, num_tokens, num_channels), residual connection
