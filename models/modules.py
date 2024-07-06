@@ -440,7 +440,7 @@ class FeedForwardNet_Pool(nn.Module):
         # matrix_total.append(rolled_tensor)
         matrix_total = torch.stack(matrix_total, dim=-1).to(x.device)
         delta_times = torch.stack(delta_times[1:], dim=-1).to(x.device)
-        delta_times = torch.softmax(delta_times, dim=-1).unsqueeze(dim=1) + self.kernel
+        delta_times = torch.softmax(delta_times, dim=-1).unsqueeze(dim=1)
         ## 改为时间编码
         average = (matrix_total * delta_times).sum(dim=-1)
         # average = (matrix_total * self.kernel).sum(dim=-1)
