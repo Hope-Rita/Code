@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from models.modules import TimeEncoder, TransformerEncoder
+from models.modules import TimeEncoder, TransformerEncoder, TransformerEncoder_Original
 from utils.utils import NeighborSampler
 
 
@@ -57,6 +57,15 @@ class TCL_Pool(nn.Module):
                                num_channels=self.node_feat_dim,
                                token_kernel_size=pool_kernel_size,
                                dropout=dropout)
+            for _ in range(self.num_layers)
+        ])
+
+        self.cross_transformers = nn.ModuleList([
+            TransformerEncoder_Original(attention_dim=self.node_feat_dim, dropout=self.dropout, num_heads=self.num_heads)
+            # TransformerEncoder(num_tokens=self.num_neighbors+1,
+            #                    num_channels=self.node_feat_dim,
+            #                    token_kernel_size=pool_kernel_size,
+            #                    dropout=dropout)
             for _ in range(self.num_layers)
         ])
 
@@ -136,17 +145,26 @@ class TCL_Pool(nn.Module):
         # Tensor, shape (batch_size, num_neighbors + 1, node_feat_dim)
         dst_node_features = dst_nodes_neighbor_node_raw_features + dst_nodes_edge_raw_features + dst_nodes_neighbor_time_features + dst_nodes_neighbor_depth_features
 
-        for transformer in self.transformers:
+        for transformer, cross_transformer in zip(self.transformers, self.cross_transformers):
             # self-attention block
             # Tensor, shape (batch_size, num_neighbors + 1, node_feat_dim)
             src_node_features = transformer(src_node_features)
             # Tensor, shape (batch_size, num_neighbors + 1, node_feat_dim)
             dst_node_features = transformer(dst_node_features)
+
             # cross-attention block
             # Tensor, shape (batch_size, num_neighbors + 1, node_feat_dim)
-            src_node_embeddings = transformer(dst_node_features)
+            src_node_embeddings = cross_transformer(inputs_query=src_node_features, inputs_key=dst_node_features,
+                                              inputs_value=dst_node_features, neighbor_masks=dst_neighbor_node_ids)
             # Tensor, shape (batch_size, num_neighbors + 1, node_feat_dim)
-            dst_node_embeddings = transformer(src_node_features)
+            dst_node_embeddings = cross_transformer(inputs_query=dst_node_features, inputs_key=src_node_features,
+                                              inputs_value=src_node_features, neighbor_masks=src_neighbor_node_ids)
+
+            # # cross-attention block
+            # # Tensor, shape (batch_size, num_neighbors + 1, node_feat_dim)
+            # src_node_embeddings = transformer(dst_node_features)
+            # # Tensor, shape (batch_size, num_neighbors + 1, node_feat_dim)
+            # dst_node_embeddings = transformer(src_node_features)
 
             src_node_features, dst_node_features = src_node_embeddings, dst_node_embeddings
 

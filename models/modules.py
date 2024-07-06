@@ -510,7 +510,7 @@ class TransformerEncoder(nn.Module):
                                                   dim_expansion_factor=channel_dim_expansion_factor,
                                                   dropout=dropout, output_dim=num_channels)
 
-    def forward(self, input_tensor: torch.Tensor, delta_times: torch.Tensor):
+    def forward(self, input_tensor: torch.Tensor, delta_times: torch.Tensor=None):
         """
         mlp mixer to compute over tokens and channels
         :param input_tensor: Tensor, shape (batch_size, num_tokens, num_channels)
