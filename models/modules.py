@@ -423,10 +423,17 @@ class FeedForwardNet_Pool(nn.Module):
         :return:
         """
         matrix_total = []
-        for i in range(self.kernel_size):
-            rolled_tensor = torch.roll(x, shifts=i, dims=2)
-            rolled_tensor[:, :, :i] = 0
-            matrix_total.append(rolled_tensor)
+        # for i in range(self.kernel_size):
+        #     rolled_tensor = torch.roll(x, shifts=i, dims=2)
+        #     rolled_tensor[:, :, :i] = 0
+        #     matrix_total.append(rolled_tensor)
+        matrix_total.append(x)
+        rolled_tensor = torch.roll(x, shifts=1, dims=2)
+        rolled_tensor[:, :, :1] = 0
+        matrix_total.append(rolled_tensor)
+        rolled_tensor = torch.roll(x, shifts=-1, dims=2)
+        rolled_tensor[:, :, -1:] = 0
+        matrix_total.append(rolled_tensor)
         matrix_total = torch.stack(matrix_total, dim=-1).to(x.device)
         average = (matrix_total * self.kernel).sum(dim=-1)
         return average
