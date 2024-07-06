@@ -663,7 +663,7 @@ class GraphAttentionEmbedding(nn.Module):
             # Tensor, output shape (batch_size, num_neighbors, node_feat_dim + time_feat_dim + edge_feat_dim)
 
             output = torch.mean(self.temporal_conv_layers[current_layer_num - 1](torch.cat([neighbor_node_conv_features, neighbor_edge_features, neighbor_time_features],
-                      dim=2)), dim=1)
+                      dim=2), torch.from_numpy(neighbor_delta_times).float().to(device)), dim=1)
             #
             # output = torch.mean((torch.cat([neighbor_node_conv_features, neighbor_edge_features, neighbor_time_features],
             #                                                                                dim=2)), dim=1)
