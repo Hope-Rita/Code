@@ -410,7 +410,7 @@ class FeedForwardNet_Pool(nn.Module):
         #     nn.Dropout(dropout)
         # )
 
-        self.kernel = nn.Parameter(torch.rand(1, 1, 1, kernel_size), requires_grad=True)
+        self.kernel = nn.Parameter(torch.rand(1, 1, kernel_size), requires_grad=True)
         # nn.GELU(),
         # nn.Dropout(dropout),
         # nn.AvgPool1d(kernel_size, stride=1, padding=kernel_size // 2, count_include_pad=False),
@@ -440,7 +440,7 @@ class FeedForwardNet_Pool(nn.Module):
         # matrix_total.append(rolled_tensor)
         matrix_total = torch.stack(matrix_total, dim=-1).to(x.device)
         delta_times = torch.stack(delta_times[1:], dim=-1).to(x.device)
-        delta_times = torch.softmax(delta_times, dim=-1).unsqueeze(dim=1)
+        delta_times = torch.softmax(delta_times, dim=-1).unsqueeze(dim=1) + self.kernel
         ## 改为时间编码
         average = (matrix_total * delta_times).sum(dim=-1)
         # average = (matrix_total * self.kernel).sum(dim=-1)
