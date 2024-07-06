@@ -41,7 +41,7 @@ def get_link_prediction_args(is_evaluation: bool = False):
     parser.add_argument('--max_input_sequence_length', type=int, default=32, help='maximal length of the input sequence of each node')
     parser.add_argument('--learning_rate', type=float, default=0.0001, help='learning rate')
     parser.add_argument('--dropout', type=float, default=0.1, help='dropout rate')
-    parser.add_argument('--num_epochs', type=int, default=100, help='number of epochs')
+    parser.add_argument('--num_epochs', type=int, default=200, help='number of epochs')
     parser.add_argument('--optimizer', type=str, default='Adam', choices=['SGD', 'Adam', 'RMSprop'], help='name of optimizer')
     parser.add_argument('--weight_decay', type=float, default=0.0, help='weight decay')
     parser.add_argument('--patience', type=int, default=20, help='patience for early stopping')
@@ -279,7 +279,7 @@ def load_link_prediction_best_configs(args: argparse.Namespace):
             args.dropout = 0.1
     elif args.model_name == 'CAWN_Pool':
         args.time_scaling_factor = 1e-6
-        args.pool_kernel_size = 1
+        args.pool_kernel_size = 3
         # args.pool_kernel_size = [1, 3, 7, 15, 31, 63]
         if args.dataset_name in ['mooc', 'SocialEvo', 'uci', 'Flights', 'UNtrade', 'UNvote', 'Contacts']:
             args.num_neighbors = 64

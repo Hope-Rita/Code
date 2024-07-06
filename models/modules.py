@@ -397,25 +397,24 @@ class FeedForwardNet_Pool(nn.Module):
         :param dropout: float, dropout rate
         """
         super(FeedForwardNet_Pool, self).__init__()
-
+        self.kernel_size = kernel_size
         # self.kernel_size = kernel_size
         # # print(kernel_size, kernel_size // 2)
-        self.pool = nn.Sequential(
-            # nn.AvgPool1d(1, stride=1, padding=1 // 2, count_include_pad=False),
+        # self.pool = nn.Sequential(
+        # nn.AvgPool1d(1, stride=1, padding=1 // 2, count_include_pad=False),
         #     nn.GELU(),
         #     nn.Dropout(dropout),
         #     # nn.Conv2d(in_channels=1, out_channels=1, kernel_size=(1, kernel_size), stride=1, padding=(0, kernel_size // 2),
         #     nn.Conv1d(in_channels=num_channels, out_channels=num_channels, kernel_size=kernel_size, stride=1, padding=kernel_size // 2,),
-            nn.Conv1d(in_channels=1, out_channels=1, kernel_size=kernel_size, stride=1, padding=kernel_size // 2,),
+        #     nn.Conv1d(in_channels=1, out_channels=8, kernel_size=kernel_size, stride=1, padding=kernel_size // 2,),
         #     nn.Dropout(dropout)
-        )
+        # )
 
-
+        self.kernel = nn.Parameter(torch.rand(1, 1, 1, kernel_size), requires_grad=True)
         # nn.GELU(),
         # nn.Dropout(dropout),
         # nn.AvgPool1d(kernel_size, stride=1, padding=kernel_size // 2, count_include_pad=False),
         # nn.Dropout(dropout))
-
 
     def forward(self, x: torch.Tensor):
         """
@@ -423,8 +422,14 @@ class FeedForwardNet_Pool(nn.Module):
         :param x: Tensor, shape (*, input_dim)
         :return:
         """
-        return self.pool(x)
-
+        matrix_total = []
+        for i in range(self.kernel_size):
+            rolled_tensor = torch.roll(x, shifts=i, dims=2)
+            rolled_tensor[:, :, :i] = 0
+            matrix_total.append(rolled_tensor)
+        matrix_total = torch.stack(matrix_total, dim=-1).to(x.device)
+        average = (matrix_total * self.kernel).sum(dim=-1)
+        return average
 
 class FeedForwardNet(nn.Module):
 
@@ -461,7 +466,7 @@ class TransformerEncoder(nn.Module):
 
     def __init__(self, num_tokens: int, num_channels: int, token_kernel_size: int,
                  dropout: float, num_heads: int = 1, channel_kernel_size: int = 1,
-                 token_dim_expansion_factor: float=0.5,
+                 token_dim_expansion_factor: float = 0.5,
                  channel_dim_expansion_factor: float = 4.0):
         """
         MLP Mixer.
@@ -477,27 +482,14 @@ class TransformerEncoder(nn.Module):
         self.token_norm = nn.LayerNorm(num_tokens)
         # self.token_norm = nn.BatchNorm1d(num_tokens)
         # self.token_feedforward = FeedForwardNet_Pool(kernel_size=token_kernel_size, dropout=dropout)
-        self.token_feedforward = FeedForwardNet_Pool(kernel_size=token_kernel_size, num_channels=num_channels, dropout=dropout)
+        self.token_feedforward = FeedForwardNet_Pool(kernel_size=token_kernel_size, num_channels=num_channels,
+                                                     dropout=dropout)
         # self.token_feedforward = FeedForwardNet(input_dim=num_tokens, dim_expansion_factor=token_dim_expansion_factor,
         #                                         dropout=dropout, output_dim=num_tokens)
         self.channel_norm = nn.LayerNorm(num_channels)
         self.channel_feedforward = FeedForwardNet(input_dim=num_channels,
-                                                                 dim_expansion_factor=channel_dim_expansion_factor,
-                                                                 dropout=dropout, output_dim=num_channels)
-
-
-        # assert num_channels % num_heads == 0
-        # token_kernel_sizes = range(1, 2 * num_heads + 1, 2)
-        # self.token_norm = nn.LayerNorm(num_tokens)
-        # self.token_feedforward = nn.ModuleList([FeedForwardNet_Pool(kernel_size=token_i, dropout=dropout)
-        #                                         for token_i in token_kernel_sizes])
-        #
-        # self.channel_norm = nn.LayerNorm(num_channels)
-        # self.channel_feedforward = nn.ModuleList([FeedForwardNet(input_dim=num_channels,
-        #                                                          dim_expansion_factor=channel_dim_expansion_factor,
-        #                                                          dropout=dropout, output_dim=num_channels // num_heads)
-        #                                           for token_i in token_kernel_sizes])
-        # self.channel_feedforward = FeedForwardNet_Pool(kernel_size=channel_kernel_size, dropout=dropout)
+                                                  dim_expansion_factor=channel_dim_expansion_factor,
+                                                  dropout=dropout, output_dim=num_channels)
 
     def forward(self, input_tensor: torch.Tensor):
         """
@@ -509,13 +501,14 @@ class TransformerEncoder(nn.Module):
         # print(input_tensor.shape)
         # Tensor, shape (batch_size, num_channels, num_tokens)
         batch_size, num_tokens, num_channels = input_tensor.shape
-        hidden_tensor = input_tensor.permute(0, 2, 1).reshape(batch_size*num_channels, 1, num_tokens)
-        # hidden_tensor = self.token_norm(input_tensor).permute(0, 2, 1).reshape(batch_size*num_channels, 1, num_tokens)
+        # hidden_tensor = input_tensor.permute(0, 2, 1).reshape(batch_size * num_channels, 1, num_tokens)
+        hidden_tensor = self.token_norm(input_tensor.permute(0, 2, 1)).reshape(batch_size*num_channels, 1, num_tokens)
         # hidden_tensor = input_tensor.permute(0, 2, 1).reshape(batch_size*num_channels, 1, num_tokens)
         # hidden_tensor = self.token_norm(input_tensor.permute(0, 2, 1))
         # Tensor, shape (batch_size, num_tokens, num_channels)
         # hidden_tensor = self.token_feedforward(hidden_tensor.unsqueeze(dim=1)).squeeze(dim=1).permute(0, 2, 1)
-        hidden_tensor = self.token_feedforward(hidden_tensor).squeeze().reshape(batch_size, num_channels, num_tokens).permute(0, 2, 1)
+        hidden_tensor = self.token_feedforward(hidden_tensor).mean(dim=-2).reshape(batch_size, num_channels,
+                                                                                   num_tokens).permute(0, 2, 1)
         # hidden_tensor = self.token_feedforward(hidden_tensor.reshape(-1, 1, self.num_tokens)).squeeze(dim=1).\
         #     reshape(-1, self.num_channel, self.num_tokens).permute(0, 2, 1)
         # Tensor, shape (batch_size, num_tokens, num_channels), residual connection
