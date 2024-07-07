@@ -461,6 +461,75 @@ class FeedForwardNet_Pool(nn.Module):
         return average
         # return average_previous + average_behind
 
+class FeedForwardNet_Pre(nn.Module):
+
+    def __init__(self, kernel_size: int, num_channels, dropout: float):
+        """
+        two-layered MLP with GELU activation function.
+        :param input_dim: int, dimension of input
+        :param dim_expansion_factor: float, dimension expansion factor
+        :param dropout: float, dropout rate
+        """
+        super(FeedForwardNet_Pre, self).__init__()
+        self.kernel_size = kernel_size
+        # self.kernel_size = kernel_size
+        # # print(kernel_size, kernel_size // 2)
+        # self.pool = nn.Sequential(
+        # nn.AvgPool1d(1, stride=1, padding=1 // 2, count_include_pad=False),
+        #     nn.GELU(),
+        #     nn.Dropout(dropout),
+        #     # nn.Conv2d(in_channels=1, out_channels=1, kernel_size=(1, kernel_size), stride=1, padding=(0, kernel_size // 2),
+        #     nn.Conv1d(in_channels=num_channels, out_channels=num_channels, kernel_size=kernel_size, stride=1, padding=kernel_size // 2,),
+        #     nn.Conv1d(in_channels=1, out_channels=8, kernel_size=kernel_size, stride=1, padding=kernel_size // 2,),
+        #     nn.Dropout(dropout)
+        # )
+
+        self.kernel_total = nn.Parameter(torch.rand(1, 1, kernel_size), requires_grad=True)
+        # self.kernel_previous = nn.Parameter(torch.rand(1, 1, kernel_size), requires_grad=True)
+        # self.kernel_behind = nn.Parameter(torch.rand(1, 1, kernel_size), requires_grad=True)
+        # nn.GELU(),
+        # nn.Dropout(dropout),
+        # nn.AvgPool1d(kernel_size, stride=1, padding=kernel_size // 2, count_include_pad=False),
+        # nn.Dropout(dropout))
+
+    def forward(self, x: torch.Tensor, delta_time: torch.Tensor=None):
+        """
+        feed forward net forward process
+        :param x: Tensor, shape (*, input_dim)
+        :return:
+        """
+        matrix_previous = []
+        matrix_behind = []
+        for i in range(self.kernel_size):
+            rolled_tensor = torch.roll(x, shifts=i, dims=2)
+            rolled_tensor[:, :, :i] = 0
+            matrix_previous.append(rolled_tensor)
+        # delta_times = [delta_time]
+        # for i in range(self.kernel_size):
+        #     delt_rolled = torch.roll(delta_time, shifts=i, dims=1)
+        #     rolled_tensor = torch.roll(x, shifts=i, dims=2)
+        #     rolled_tensor[:, :, :i] = 0
+        #     delt_rolled[:, :i] = 1e20
+        #     matrix_total.append(rolled_tensor)
+        #     delta_times.append(delta_times[-1]-delt_rolled)
+        # matrix_total.append(x)
+        # rolled_tensor = torch.roll(x, shifts=1, dims=2)
+        # rolled_tensor[:, :, :1] = 0
+        # matrix_total.append(rolled_tensor)
+        # rolled_tensor = torch.roll(x, shifts=-1, dims=2)
+        # rolled_tensor[:, :, -1:] = 0
+        # matrix_total.append(rolled_tensor)
+        matrix_total = torch.stack(matrix_previous, dim=-1).to(x.device)
+        # delta_times = torch.stack(delta_times[1:], dim=-1).to(x.device)
+        # delta_times = torch.softmax(delta_times, dim=-1).unsqueeze(dim=1)
+        ## 改为时间编码
+        # average = (matrix_total * delta_times).sum(dim=-1)
+        # average_previous = (matrix_total * self.kernel_previous).sum(dim=-1)
+        average = (matrix_total * self.kernel_total).sum(dim=-1)
+        # average_behind = (matrix_behind * self.kernel_behind).sum(dim=-1)
+        return average
+        # return average_previous + average_behind
+
 class FeedForwardNet(nn.Module):
 
     def __init__(self, input_dim: int, dim_expansion_factor: float, output_dim: int, dropout: float = 0.0):
@@ -520,7 +589,7 @@ class TransformerEncoder(nn.Module):
                                                      dropout=dropout))
             self.fusion = nn.Linear(len(token_kernel_size)+1, 1)
         elif isinstance(token_kernel_size, int):
-            self.token_feedforward=nn.ModuleList([FeedForwardNet_Pool(kernel_size=token_kernel_size, num_channels=num_channels,
+            self.token_feedforward=nn.ModuleList([FeedForwardNet_Pre(kernel_size=token_kernel_size, num_channels=num_channels,
                                                               dropout=dropout)])
         # self.token_feedforward = FeedForwardNet(input_dim=num_tokens, dim_expansion_factor=token_dim_expansion_factor,
         #                                         dropout=dropout, output_dim=num_tokens)
@@ -551,8 +620,8 @@ class TransformerEncoder(nn.Module):
         hidden_ts = [input_tensor]
         for token_module in self.token_feedforward:
             hidden_ts.append(token_module(hidden_tensor).permute(0, 2, 1))
-        if len(hidden_ts) == 1:
-            hidden_tensor = hidden_ts[0]
+        if len(hidden_ts) == 2:
+            hidden_tensor = hidden_ts[1]
         else:
             hidden_tensor = self.fusion(torch.stack(hidden_ts, dim=-1).to(hidden_tensor.device)).squeeze()
         # hidden_tensor = self.token_feedforward(hidden_tensor).permute(0, 2, 1)
