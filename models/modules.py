@@ -410,7 +410,8 @@ class FeedForwardNet_Pool(nn.Module):
         #     nn.Dropout(dropout)
         # )
 
-        self.kernel = nn.Parameter(torch.rand(1, 1, kernel_size), requires_grad=True)
+        self.kernel_previous = nn.Parameter(torch.rand(1, 1, kernel_size), requires_grad=True)
+        self.kernel_behind = nn.Parameter(torch.rand(1, 1, kernel_size), requires_grad=True)
         # nn.GELU(),
         # nn.Dropout(dropout),
         # nn.AvgPool1d(kernel_size, stride=1, padding=kernel_size // 2, count_include_pad=False),
@@ -422,11 +423,15 @@ class FeedForwardNet_Pool(nn.Module):
         :param x: Tensor, shape (*, input_dim)
         :return:
         """
-        matrix_total = []
+        matrix_previous = []
+        matrix_behind = []
         for i in range(self.kernel_size):
             rolled_tensor = torch.roll(x, shifts=i, dims=2)
+            rolled_beh = torch.roll(x, shifts=-i, dims=2)
             rolled_tensor[:, :, :i] = 0
-            matrix_total.append(rolled_tensor)
+            rolled_beh[:, :, :i] = 0
+            matrix_previous.append(rolled_tensor)
+            matrix_behind.append(rolled_beh)
         # delta_times = [delta_time]
         # for i in range(self.kernel_size):
         #     delt_rolled = torch.roll(delta_time, shifts=i, dims=1)
@@ -442,13 +447,15 @@ class FeedForwardNet_Pool(nn.Module):
         # rolled_tensor = torch.roll(x, shifts=-1, dims=2)
         # rolled_tensor[:, :, -1:] = 0
         # matrix_total.append(rolled_tensor)
-        matrix_total = torch.stack(matrix_total, dim=-1).to(x.device)
+        matrix_total = torch.stack(matrix_previous, dim=-1).to(x.device)
+        matrix_behind = torch.stack(matrix_behind, dim=-1).to(x.device)
         # delta_times = torch.stack(delta_times[1:], dim=-1).to(x.device)
         # delta_times = torch.softmax(delta_times, dim=-1).unsqueeze(dim=1)
         ## 改为时间编码
         # average = (matrix_total * delta_times).sum(dim=-1)
-        average = (matrix_total * self.kernel).sum(dim=-1)
-        return average
+        average_previous = (matrix_total * self.kernel_previous).sum(dim=-1)
+        average_behind = (matrix_behind * self.kernel_behind).sum(dim=-1)
+        return average_previous + average_behind
 
 class FeedForwardNet(nn.Module):
 
@@ -499,10 +506,18 @@ class TransformerEncoder(nn.Module):
         self.num_tokens = num_tokens
         self.num_channel = num_channels
         self.token_norm = nn.LayerNorm(num_tokens)
+
         # self.token_norm = nn.BatchNorm1d(num_tokens)
         # self.token_feedforward = FeedForwardNet_Pool(kernel_size=token_kernel_size, dropout=dropout)
-        self.token_feedforward = FeedForwardNet_Pool(kernel_size=token_kernel_size, num_channels=num_channels,
-                                                     dropout=dropout)
+        if isinstance(token_kernel_size, list):
+            self.token_feedforward = nn.ModuleList()
+            for kernel_size in token_kernel_size:
+                self.token_feedforward.append(FeedForwardNet_Pool(kernel_size=kernel_size, num_channels=num_channels,
+                                                     dropout=dropout))
+            self.fusion = nn.Linear(len(token_kernel_size), 1)
+        elif isinstance(token_kernel_size, int):
+            self.token_feedforward=nn.ModuleList([FeedForwardNet_Pool(kernel_size=token_kernel_size, num_channels=num_channels,
+                                                              dropout=dropout)])
         # self.token_feedforward = FeedForwardNet(input_dim=num_tokens, dim_expansion_factor=token_dim_expansion_factor,
         #                                         dropout=dropout, output_dim=num_tokens)
         self.channel_norm = nn.LayerNorm(num_channels)
@@ -522,7 +537,6 @@ class TransformerEncoder(nn.Module):
         batch_size, num_tokens, num_channels = input_tensor.shape
         # hidden_tensor = input_tensor.permute(0, 2, 1).reshape(batch_size * num_channels, 1, num_tokens) # todo: 不加norm效果更好一些
         hidden_tensor = input_tensor.permute(0, 2, 1)
-        
         # hidden_tensor = self.token_norm(input_tensor.permute(0, 2, 1)).reshape(batch_size*num_channels, 1, num_tokens)
         # hidden_tensor = input_tensor.permute(0, 2, 1).reshape(batch_size*num_channels, 1, num_tokens)
         # hidden_tensor = self.token_norm(input_tensor.permute(0, 2, 1))
@@ -530,7 +544,14 @@ class TransformerEncoder(nn.Module):
         # hidden_tensor = self.token_feedforward(hidden_tensor.unsqueeze(dim=1)).squeeze(dim=1).permute(0, 2, 1)
         # hidden_tensor = self.token_feedforward(hidden_tensor, delta_times).mean(dim=-2).reshape(batch_size, num_channels,
         # hidden_tensor = self.token_feedforward(hidden_tensor, delta_times).permute(0, 2, 1)
-        hidden_tensor = self.token_feedforward(hidden_tensor).permute(0, 2, 1)
+        hidden_ts = []
+        for token_module in self.token_feedforward:
+            hidden_ts.append(token_module(hidden_tensor).permute(0, 2, 1))
+        if len(hidden_ts) == 1:
+            hidden_tensor = hidden_ts[0]
+        else:
+            hidden_tensor = self.fusion(torch.stack(hidden_ts, dim=-1).to(hidden_tensor.device)).squeeze()
+        # hidden_tensor = self.token_feedforward(hidden_tensor).permute(0, 2, 1)
         # hidden_tensor = self.token_feedforward(hidden_tensor.reshape(-1, 1, self.num_tokens)).squeeze(dim=1).\
         #     reshape(-1, self.num_channel, self.num_tokens).permute(0, 2, 1)
         # Tensor, shape (batch_size, num_tokens, num_channels), residual connection
