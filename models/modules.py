@@ -591,6 +591,7 @@ class TransformerEncoder(nn.Module):
         elif isinstance(token_kernel_size, int):
             self.token_feedforward=nn.ModuleList([FeedForwardNet_Pre(kernel_size=token_kernel_size, num_channels=num_channels,
                                                               dropout=dropout)])
+            
         # self.token_feedforward = FeedForwardNet(input_dim=num_tokens, dim_expansion_factor=token_dim_expansion_factor,
         #                                         dropout=dropout, output_dim=num_tokens)
         self.channel_norm = nn.LayerNorm(num_channels)
