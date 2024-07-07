@@ -410,8 +410,9 @@ class FeedForwardNet_Pool(nn.Module):
         #     nn.Dropout(dropout)
         # )
 
-        self.kernel_previous = nn.Parameter(torch.rand(1, 1, kernel_size), requires_grad=True)
-        self.kernel_behind = nn.Parameter(torch.rand(1, 1, kernel_size), requires_grad=True)
+        self.kernel_total = nn.Parameter(torch.rand(1, 1, kernel_size*2-1), requires_grad=True)
+        # self.kernel_previous = nn.Parameter(torch.rand(1, 1, kernel_size), requires_grad=True)
+        # self.kernel_behind = nn.Parameter(torch.rand(1, 1, kernel_size), requires_grad=True)
         # nn.GELU(),
         # nn.Dropout(dropout),
         # nn.AvgPool1d(kernel_size, stride=1, padding=kernel_size // 2, count_include_pad=False),
@@ -429,7 +430,7 @@ class FeedForwardNet_Pool(nn.Module):
             rolled_tensor = torch.roll(x, shifts=i, dims=2)
             rolled_beh = torch.roll(x, shifts=-i, dims=2)
             rolled_tensor[:, :, :i] = 0
-            rolled_beh[:, :, :i] = 0
+            rolled_beh[:, :, -i:] = 0
             matrix_previous.append(rolled_tensor)
             matrix_behind.append(rolled_beh)
         # delta_times = [delta_time]
@@ -448,14 +449,17 @@ class FeedForwardNet_Pool(nn.Module):
         # rolled_tensor[:, :, -1:] = 0
         # matrix_total.append(rolled_tensor)
         matrix_total = torch.stack(matrix_previous, dim=-1).to(x.device)
-        matrix_behind = torch.stack(matrix_behind, dim=-1).to(x.device)
+        matrix_behind = torch.stack(matrix_behind[1:], dim=-1).to(x.device)
         # delta_times = torch.stack(delta_times[1:], dim=-1).to(x.device)
         # delta_times = torch.softmax(delta_times, dim=-1).unsqueeze(dim=1)
         ## 改为时间编码
         # average = (matrix_total * delta_times).sum(dim=-1)
-        average_previous = (matrix_total * self.kernel_previous).sum(dim=-1)
-        average_behind = (matrix_behind * self.kernel_behind).sum(dim=-1)
-        return average_previous + average_behind
+        matrix_total = torch.cat([matrix_total, matrix_behind], dim=-1)
+        # average_previous = (matrix_total * self.kernel_previous).sum(dim=-1)
+        average = (matrix_total * self.kernel_total).sum(dim=-1)
+        # average_behind = (matrix_behind * self.kernel_behind).sum(dim=-1)
+        return average
+        # return average_previous + average_behind
 
 class FeedForwardNet(nn.Module):
 
@@ -514,7 +518,7 @@ class TransformerEncoder(nn.Module):
             for kernel_size in token_kernel_size:
                 self.token_feedforward.append(FeedForwardNet_Pool(kernel_size=kernel_size, num_channels=num_channels,
                                                      dropout=dropout))
-            self.fusion = nn.Linear(len(token_kernel_size), 1)
+            self.fusion = nn.Linear(len(token_kernel_size)+1, 1)
         elif isinstance(token_kernel_size, int):
             self.token_feedforward=nn.ModuleList([FeedForwardNet_Pool(kernel_size=token_kernel_size, num_channels=num_channels,
                                                               dropout=dropout)])
@@ -544,7 +548,7 @@ class TransformerEncoder(nn.Module):
         # hidden_tensor = self.token_feedforward(hidden_tensor.unsqueeze(dim=1)).squeeze(dim=1).permute(0, 2, 1)
         # hidden_tensor = self.token_feedforward(hidden_tensor, delta_times).mean(dim=-2).reshape(batch_size, num_channels,
         # hidden_tensor = self.token_feedforward(hidden_tensor, delta_times).permute(0, 2, 1)
-        hidden_ts = []
+        hidden_ts = [input_tensor]
         for token_module in self.token_feedforward:
             hidden_ts.append(token_module(hidden_tensor).permute(0, 2, 1))
         if len(hidden_ts) == 1:
