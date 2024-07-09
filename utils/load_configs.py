@@ -333,8 +333,8 @@ def load_link_prediction_best_configs(args: argparse.Namespace):
             else:
                 args.sample_neighbor_strategy = 'recent'
     elif args.model_name == 'TCL_Pool':
-        args.num_neighbors = 20
-        # args.num_neighbors = 128
+        # args.num_neighbors = 20
+        args.num_neighbors = 128
         args.num_layers = 2
         args.pool_kernel_size = 3
         # args.pool_kernel_size = [1, 3, 7, 15, 31, 63]
