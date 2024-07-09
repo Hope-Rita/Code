@@ -152,19 +152,19 @@ class TCL_Pool(nn.Module):
             # Tensor, shape (batch_size, num_neighbors + 1, node_feat_dim)
             dst_node_features = transformer(dst_node_features)
 
-            # # cross-attention block
-            # # Tensor, shape (batch_size, num_neighbors + 1, node_feat_dim)
-            # src_node_embeddings = cross_transformer(inputs_query=src_node_features, inputs_key=dst_node_features,
-            #                                   inputs_value=dst_node_features, neighbor_masks=dst_neighbor_node_ids)
-            # # Tensor, shape (batch_size, num_neighbors + 1, node_feat_dim)
-            # dst_node_embeddings = cross_transformer(inputs_query=dst_node_features, inputs_key=src_node_features,
-            #                                   inputs_value=src_node_features, neighbor_masks=src_neighbor_node_ids)
-
             # cross-attention block
             # Tensor, shape (batch_size, num_neighbors + 1, node_feat_dim)
-            src_node_embeddings = transformer(dst_node_features)
+            src_node_embeddings = cross_transformer(inputs_query=src_node_features, inputs_key=dst_node_features,
+                                              inputs_value=dst_node_features, neighbor_masks=dst_neighbor_node_ids)
             # Tensor, shape (batch_size, num_neighbors + 1, node_feat_dim)
-            dst_node_embeddings = transformer(src_node_features)
+            dst_node_embeddings = cross_transformer(inputs_query=dst_node_features, inputs_key=src_node_features,
+                                              inputs_value=src_node_features, neighbor_masks=src_neighbor_node_ids)
+
+            # # cross-attention block
+            # # Tensor, shape (batch_size, num_neighbors + 1, node_feat_dim)
+            # src_node_embeddings = transformer(dst_node_features)
+            # # Tensor, shape (batch_size, num_neighbors + 1, node_feat_dim)
+            # dst_node_embeddings = transformer(src_node_features)
 
             src_node_features, dst_node_features = src_node_embeddings, dst_node_embeddings
 
