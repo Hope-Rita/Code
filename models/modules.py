@@ -496,8 +496,8 @@ class FeedForwardNet_Pre(nn.Module):
         # delta_times = [delta_time]
         for i in range(self.kernel_size):
             delt_rolled = torch.roll(delta_time, shifts=i, dims=1)
-            delt_rolled[:, :i] = -1e20
-            delta_times.append(delt_rolled - delta_times[0]) # 基准均是当前时刻
+            delt_rolled[:, :i] = 1e20
+            delta_times.append(delt_rolled - delta_times[0])  # 基准均是当前时刻
         # matrix_total.append(x)
         # rolled_tensor = torch.roll(x, shifts=1, dims=2)
         # rolled_tensor[:, :, :1] = 0

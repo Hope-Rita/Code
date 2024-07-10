@@ -131,7 +131,8 @@ class CAWN_Pool(nn.Module):
         # Tensor, shape (batch_size, self.output_dim)
         final_node_embeddings = self.walk_encoder(neighbor_raw_features=neighbor_raw_features, neighbor_time_features=neighbor_time_features,
                                                   edge_features=edge_features, neighbor_position_features=neighbor_position_features,
-                                                  walks_valid_lengths=walks_valid_lengths)
+                                                  walks_valid_lengths=walks_valid_lengths, neighbor_times=
+                                                  torch.from_numpy(nodes_neighbor_delta_times[:, :, 1]).to(edge_features.device).to(torch.float32))
         return final_node_embeddings
 
     def convert_format_from_tree_to_array(self, node_ids: np.ndarray, node_interact_times: np.ndarray, node_multi_hop_graphs: tuple, num_neighbors: int = 20):
@@ -342,7 +343,7 @@ class WalkEncoder(nn.Module):
         ])
 
     def forward(self, neighbor_raw_features: torch.Tensor, neighbor_time_features: torch.Tensor, edge_features: torch.Tensor,
-                neighbor_position_features: torch.Tensor, walks_valid_lengths: np.ndarray):
+                neighbor_position_features: torch.Tensor, walks_valid_lengths: np.ndarray, neighbor_times: torch.Tensor):
         """
         first encode each random walk by BiLSTM and then aggregate all the walks by the self-attention in Transformer
         :param neighbor_raw_features: Tensor, shape (batch_size, num_neighbors ** self.walk_length, self.walk_length + 1, node_feat_dim)
@@ -364,7 +365,7 @@ class WalkEncoder(nn.Module):
         # # Tensor, shape (batch_size, num_neighbors ** self.walk_length, self.attention_dim)
         combined_features = self.projection_layers[0](combined_features)
         # Tensor, shape (batch_size, self.feature_encoder.model_dim + self.position_encoder.model_dim)
-        combined_features = self.transformer_encoder(combined_features).mean(dim=1)
+        combined_features = self.transformer_encoder(combined_features, neighbor_times).mean(dim=1)
 
         # # Tensor, shape (batch_size, num_neighbors ** self.walk_length, self.attention_dim)
         # combined_features = self.projection_layers[0](combined_features)

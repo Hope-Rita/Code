@@ -336,7 +336,7 @@ def load_link_prediction_best_configs(args: argparse.Namespace):
         args.num_neighbors = 20
         # args.num_neighbors = 128
         args.num_layers = 2
-        args.pool_kernel_size = 3
+        args.pool_kernel_size = [1, 3]
         # args.pool_kernel_size = [1, 3, 7, 15, 31, 63]
         # args.num_heads = 1
         if args.dataset_name in ['SocialEvo', 'uci', 'UNtrade', 'UNvote', 'Contacts']:

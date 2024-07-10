@@ -55,7 +55,7 @@ class TCL_Pool(nn.Module):
             # TransformerEncoder(attention_dim=self.node_feat_dim, dropout=self.dropout, num_heads=self.num_heads, pool_kernel_size=self.pool_kernel_size)
             TransformerEncoder(num_tokens=self.num_neighbors+1,
                                num_channels=self.node_feat_dim,
-                               token_kernel_size=pool_kernel_size,
+                               token_kernel_size=pool_kernel_size[_],
                                dropout=dropout)
             for _ in range(self.num_layers)
         ])
@@ -148,9 +148,9 @@ class TCL_Pool(nn.Module):
         for transformer, cross_transformer in zip(self.transformers, self.cross_transformers):
             # self-attention block
             # Tensor, shape (batch_size, num_neighbors + 1, node_feat_dim)
-            src_node_features = transformer(src_node_features)
+            src_node_features = transformer(src_node_features, torch.from_numpy(node_interact_times[:, np.newaxis] - src_neighbor_times).to(src_node_features.device).to(torch.float32))
             # Tensor, shape (batch_size, num_neighbors + 1, node_feat_dim)
-            dst_node_features = transformer(dst_node_features)
+            dst_node_features = transformer(dst_node_features, torch.from_numpy(node_interact_times[:, np.newaxis] - dst_neighbor_times).to(src_node_features.device).to(torch.float32))
 
             # cross-attention block
             # Tensor, shape (batch_size, num_neighbors + 1, node_feat_dim)
