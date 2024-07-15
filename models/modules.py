@@ -461,7 +461,7 @@ class FeedForwardNet_Pool(nn.Module):
         return average
         # return average_previous + average_behind
 
-class FeedForwardNet_Pre(nn.Module):
+class FeedForwardNet_Time(nn.Module):
 
     def __init__(self, kernel_size: int, num_channels, dropout: float):
         """
@@ -470,7 +470,7 @@ class FeedForwardNet_Pre(nn.Module):
         :param dim_expansion_factor: float, dimension expansion factor
         :param dropout: float, dropout rate
         """
-        super(FeedForwardNet_Pre, self).__init__()
+        super(FeedForwardNet_Time, self).__init__()
         self.kernel_size = kernel_size
 
         self.kernel_total = nn.Parameter(torch.rand(1, 1, kernel_size), requires_grad=True)
@@ -518,6 +518,43 @@ class FeedForwardNet_Pre(nn.Module):
         average = torch.matmul(soft_average, average).mean(dim=-2)
         # return average_previous + average_behind
         return average
+
+class FeedForwardNet_Pre(nn.Module):
+
+    def __init__(self, kernel_size: int, num_channels, dropout: float):
+        """
+        two-layered MLP with GELU activation function.
+        :param input_dim: int, dimension of input
+        :param dim_expansion_factor: float, dimension expansion factor
+        :param dropout: float, dropout rate
+        """
+        super(FeedForwardNet_Pre, self).__init__()
+        self.kernel_size = kernel_size
+
+        self.kernel_total = nn.Parameter(torch.rand(1, 1, kernel_size), requires_grad=True)
+        # self.kernel_previous = nn.Parameter(torch.rand(1, 1, kernel_size), requires_grad=True)
+        # self.kernel_behind = nn.Parameter(torch.rand(1, 1, kernel_size), requires_grad=True)
+        # nn.GELU(),
+        # nn.Dropout(dropout),
+        # nn.AvgPool1d(kernel_size, stride=1, padding=kernel_size // 2, count_include_pad=False),
+        # nn.Dropout(dropout))
+
+    def forward(self, x: torch.Tensor):
+        """
+        feed forward net forward process
+        :param x: Tensor, shape (*, input_dim)
+        :return:
+        """
+        matrix_previous = []
+        for i in range(self.kernel_size):
+            rolled_tensor = torch.roll(x, shifts=i, dims=2)
+            rolled_tensor[:, :, :i] = 0
+            matrix_previous.append(rolled_tensor)
+
+        matrix_total = torch.stack(matrix_previous, dim=-1).to(x.device)
+        average_previous = (matrix_total * self.kernel_total).sum(dim=-1)
+        return average_previous
+
 
 class FeedForwardNet(nn.Module):
 
@@ -567,59 +604,31 @@ class TransformerEncoderBlock(nn.Module):
         super(TransformerEncoderBlock, self).__init__()
         self.num_tokens = num_tokens
         self.num_channel = num_channels
-        self.token_norm = nn.LayerNorm(num_tokens)
+        self.dropout = dropout
 
-        self.token_feedforward= FeedForwardNet_Pre(kernel_size=token_kernel_size, num_channels=num_channels,
-                                                              dropout=dropout)
+        if isinstance(token_kernel_size, list):
+            self.transformer_layers = nn.ModuleList()
+            for kernel_size in token_kernel_size:
+                self.transformer_layers.append(TransformerEncoder(num_tokens=num_tokens,
+                    token_kernel_size=kernel_size, num_channels=num_channels,
+                                                     dropout=dropout))
+        elif isinstance(token_kernel_size, int):
+            self.transformer_layers=nn.ModuleList([TransformerEncoder(num_tokens=num_tokens,
+                    token_kernel_size=token_kernel_size, num_channels=num_channels,
+                                                     dropout=dropout)])
+        self.drop = nn.Dropout(self.dropout)
 
-        # self.token_feedforward = FeedForwardNet(input_dim=num_tokens, dim_expansion_factor=token_dim_expansion_factor,
-        #                                         dropout=dropout, output_dim=num_tokens)
-        self.channel_norm = nn.LayerNorm(num_channels)
-        self.channel_feedforward = FeedForwardNet(input_dim=num_channels,
-                                                  dim_expansion_factor=channel_dim_expansion_factor,
-                                                  dropout=dropout, output_dim=num_channels)
-
-    def forward(self, input_tensor: torch.Tensor, delta_times: torch.Tensor=None):
+    def forward(self, input_tensor: torch.Tensor):
         """
         mlp mixer to compute over tokens and channels
         :param input_tensor: Tensor, shape (batch_size, num_tokens, num_channels)
         :return:
         """
-        # mix tokens
-        # print(input_tensor.shape)
-        # Tensor, shape (batch_size, num_channels, num_tokens)
-        batch_size, num_tokens, num_channels = input_tensor.shape
-        # hidden_tensor = input_tensor.permute(0, 2, 1).reshape(batch_size * num_channels, 1, num_tokens) # todo: 不加norm效果更好一些
-        hidden_tensor = input_tensor.permute(0, 2, 1)
-        # hidden_tensor = self.token_norm(input_tensor.permute(0, 2, 1)).reshape(batch_size*num_channels, 1, num_tokens)
-        # hidden_tensor = input_tensor.permute(0, 2, 1).reshape(batch_size*num_channels, 1, num_tokens)
-        # hidden_tensor = self.token_norm(input_tensor.permute(0, 2, 1))
-        # Tensor, shape (batch_size, num_tokens, num_channels)
-        # hidden_tensor = self.token_feedforward(hidden_tensor.unsqueeze(dim=1)).squeeze(dim=1).permute(0, 2, 1)
-        # hidden_tensor = self.token_feedforward(hidden_tensor, delta_times).mean(dim=-2).reshape(batch_size, num_channels,
-        # hidden_tensor = self.token_feedforward(hidden_tensor, delta_times).permute(0, 2, 1)
-        hidden_ts = [input_tensor]
-        for token_module in self.token_feedforward:
-            hidden_ts.append(token_module(hidden_tensor).permute(0, 2, 1))
-        if len(hidden_ts) == 2:
-            hidden_tensor = hidden_ts[1]
-        else:
-            hidden_tensor = self.fusion(torch.stack(hidden_ts, dim=-1).to(hidden_tensor.device)).squeeze()
-        # hidden_tensor = self.token_feedforward(hidden_tensor).permute(0, 2, 1)
-        # hidden_tensor = self.token_feedforward(hidden_tensor.reshape(-1, 1, self.num_tokens)).squeeze(dim=1).\
-        #     reshape(-1, self.num_channel, self.num_tokens).permute(0, 2, 1)
-        # Tensor, shape (batch_size, num_tokens, num_channels), residual connection
-        output_tensor = hidden_tensor + input_tensor
+        for encoder in self.transformer_layers:
+            input_tensor = self.drop(encoder(input_tensor))
+            # input_tensor = encoder(input_tensor)
 
-        # mix channels
-        # Tensor, shape (batch_size, num_tokens, num_channels)
-        hidden_tensor = self.channel_norm(output_tensor)
-        # Tensor, shape (batch_size, num_tokens, num_channels)
-        hidden_tensor = self.channel_feedforward(hidden_tensor)
-        # Tensor, shape (batch_size, num_tokens, num_channels), residual connection
-        output_tensor = hidden_tensor + output_tensor
-
-        return output_tensor
+        return input_tensor
 
 
 
@@ -642,17 +651,8 @@ class TransformerEncoder(nn.Module):
         self.num_channel = num_channels
         self.token_norm = nn.LayerNorm(num_tokens)
 
-        # self.token_norm = nn.BatchNorm1d(num_tokens)
-        # self.token_feedforward = FeedForwardNet_Pool(kernel_size=token_kernel_size, dropout=dropout)
-        if isinstance(token_kernel_size, list):
-            self.token_feedforward = nn.ModuleList()
-            for kernel_size in token_kernel_size:
-                self.token_feedforward.append(FeedForwardNet_Pool(kernel_size=kernel_size, num_channels=num_channels,
-                                                     dropout=dropout))
-            self.fusion = nn.Linear(len(token_kernel_size)+1, 1)
-        elif isinstance(token_kernel_size, int):
-            self.token_feedforward=nn.ModuleList([FeedForwardNet_Pre(kernel_size=token_kernel_size, num_channels=num_channels,
-                                                              dropout=dropout)])
+        self.token_feedforward = FeedForwardNet_Pre(kernel_size=token_kernel_size, num_channels=num_channels,
+                                                              dropout=dropout)
 
         # self.token_feedforward = FeedForwardNet(input_dim=num_tokens, dim_expansion_factor=token_dim_expansion_factor,
         #                                         dropout=dropout, output_dim=num_tokens)
@@ -661,7 +661,8 @@ class TransformerEncoder(nn.Module):
                                                   dim_expansion_factor=channel_dim_expansion_factor,
                                                   dropout=dropout, output_dim=num_channels)
 
-    def forward(self, input_tensor: torch.Tensor, delta_times: torch.Tensor=None):
+    # def forward(self, input_tensor: torch.Tensor, delta_times: torch.Tensor=None):
+    def forward(self, input_tensor: torch.Tensor):
         """
         mlp mixer to compute over tokens and channels
         :param input_tensor: Tensor, shape (batch_size, num_tokens, num_channels)
@@ -673,23 +674,9 @@ class TransformerEncoder(nn.Module):
         batch_size, num_tokens, num_channels = input_tensor.shape
         # hidden_tensor = input_tensor.permute(0, 2, 1).reshape(batch_size * num_channels, 1, num_tokens) # todo: 不加norm效果更好一些
         hidden_tensor = input_tensor.permute(0, 2, 1)
-        # hidden_tensor = self.token_norm(input_tensor.permute(0, 2, 1)).reshape(batch_size*num_channels, 1, num_tokens)
-        # hidden_tensor = input_tensor.permute(0, 2, 1).reshape(batch_size*num_channels, 1, num_tokens)
-        # hidden_tensor = self.token_norm(input_tensor.permute(0, 2, 1))
-        # Tensor, shape (batch_size, num_tokens, num_channels)
-        # hidden_tensor = self.token_feedforward(hidden_tensor.unsqueeze(dim=1)).squeeze(dim=1).permute(0, 2, 1)
-        # hidden_tensor = self.token_feedforward(hidden_tensor, delta_times).mean(dim=-2).reshape(batch_size, num_channels,
-        # hidden_tensor = self.token_feedforward(hidden_tensor, delta_times).permute(0, 2, 1)
-        hidden_ts = [input_tensor]
-        for token_module in self.token_feedforward:
-            hidden_ts.append(token_module(hidden_tensor, delta_times).permute(0, 2, 1))
-        if len(hidden_ts) == 2:
-            hidden_tensor = hidden_ts[1]
-        else:
-            hidden_tensor = self.fusion(torch.stack(hidden_ts, dim=-1).to(hidden_tensor.device)).squeeze()
-        # hidden_tensor = self.token_feedforward(hidden_tensor).permute(0, 2, 1)
-        # hidden_tensor = self.token_feedforward(hidden_tensor.reshape(-1, 1, self.num_tokens)).squeeze(dim=1).\
-        #     reshape(-1, self.num_channel, self.num_tokens).permute(0, 2, 1)
+
+        hidden_tensor = self.token_feedforward(hidden_tensor).permute(0, 2, 1)
+
         # Tensor, shape (batch_size, num_tokens, num_channels), residual connection
         output_tensor = hidden_tensor + input_tensor
 

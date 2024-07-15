@@ -4,7 +4,7 @@ import torch.nn as nn
 from collections import defaultdict
 
 from utils.utils import NeighborSampler
-from models.modules import TimeEncoder, MergeLayer, TransformerEncoder
+from models.modules import TimeEncoder, MergeLayer, TransformerEncoder, TransformerEncoderBlock
 
 
 class MemoryModel_Pool(torch.nn.Module):
@@ -586,7 +586,7 @@ class GraphAttentionEmbedding(nn.Module):
         # (self, num_tokens: int, num_channels: int, token_kernel_size: int,
         # dropout: float, channel_kernel_size: int = 1, channel_dim_expansion_factor: float = 4.0)
 
-        self.temporal_conv_layers = nn.ModuleList([TransformerEncoder(num_tokens=num_neighbors,
+        self.temporal_conv_layers = nn.ModuleList([TransformerEncoderBlock(num_tokens=num_neighbors,
                                                                       num_channels=self.node_feat_dim + self.edge_feat_dim + self.time_feat_dim,
                                                                       token_kernel_size=pool_kernel_size,
                                                                       dropout=dropout) for _ in range(num_layers)])
@@ -663,7 +663,8 @@ class GraphAttentionEmbedding(nn.Module):
             # Tensor, output shape (batch_size, num_neighbors, node_feat_dim + time_feat_dim + edge_feat_dim)
 
             output = torch.mean(self.temporal_conv_layers[current_layer_num - 1](torch.cat([neighbor_node_conv_features, neighbor_edge_features, neighbor_time_features],
-                      dim=2), torch.from_numpy(neighbor_delta_times).float().to(device)), dim=1)
+                      # dim=2), torch.from_numpy(neighbor_delta_times).float().to(device)), dim=1)
+                      dim=2)), dim=1)
             #
             # output = torch.mean((torch.cat([neighbor_node_conv_features, neighbor_edge_features, neighbor_time_features],
             #                                                                                dim=2)), dim=1)
