@@ -625,11 +625,12 @@ class TransformerEncoderBlock(nn.Module):
         :param input_tensor: Tensor, shape (batch_size, num_tokens, num_channels)
         :return:
         """
+        out_tensor = input_tensor.clone()
         for encoder in self.transformer_layers:
-            input_tensor = self.drop(encoder(input_tensor))
+            out_tensor = self.drop(encoder(out_tensor)) + input_tensor
             # input_tensor = encoder(input_tensor)
 
-        return input_tensor
+        return out_tensor
 
 
 
