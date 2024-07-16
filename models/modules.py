@@ -675,7 +675,8 @@ class TransformerEncoder(nn.Module):
         # Tensor, shape (batch_size, num_channels, num_tokens)
         batch_size, num_tokens, num_channels = input_tensor.shape
         # hidden_tensor = input_tensor.permute(0, 2, 1).reshape(batch_size * num_channels, 1, num_tokens) # todo: 不加norm效果更好一些
-        hidden_tensor = input_tensor.permute(0, 2, 1)
+        # hidden_tensor = input_tensor.permute(0, 2, 1)
+        hidden_tensor = self.token_norm(input_tensor.permute(0, 2, 1))
 
         hidden_tensor = self.token_feedforward(hidden_tensor).permute(0, 2, 1)
 
