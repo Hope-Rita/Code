@@ -532,7 +532,7 @@ class FeedForwardNet_Pre(nn.Module):
         self.kernel_size = kernel_size
         self.pre_kernel_size = pre_kernel_size
 
-        self.kernel_total = nn.Parameter(torch.rand(1, 1, 2), requires_grad=True)
+        self.kernel_total = nn.Parameter(torch.rand(1, 1, 3), requires_grad=True)
         # self.kernel_previous = nn.Parameter(torch.rand(1, 1, kernel_size), requires_grad=True)
         # self.kernel_behind = nn.Parameter(torch.rand(1, 1, kernel_size), requires_grad=True)
         # nn.GELU(),
@@ -554,6 +554,11 @@ class FeedForwardNet_Pre(nn.Module):
         rolled_tensor = torch.roll(x, shifts=self.kernel_size, dims=2)
         rolled_tensor[:, :, :self.kernel_size] = 0
         matrix_previous.append(rolled_tensor)
+
+        rolled_tensor = torch.roll(x, shifts=-self.kernel_size, dims=2)
+        rolled_tensor[:, :, -self.kernel_size:] = 0
+        matrix_previous.append(rolled_tensor)
+
         matrix_total = torch.stack(matrix_previous, dim=-1).to(x.device)
         average_previous = (matrix_total * self.kernel_total).sum(dim=-1)
         return average_previous
