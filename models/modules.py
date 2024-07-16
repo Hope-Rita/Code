@@ -521,7 +521,7 @@ class FeedForwardNet_Time(nn.Module):
 
 class FeedForwardNet_Pre(nn.Module):
 
-    def __init__(self, kernel_size: int, num_channels, dropout: float):
+    def __init__(self, kernel_size: int, pre_kernel_size: int, num_channels, dropout: float):
         """
         two-layered MLP with GELU activation function.
         :param input_dim: int, dimension of input
@@ -530,8 +530,9 @@ class FeedForwardNet_Pre(nn.Module):
         """
         super(FeedForwardNet_Pre, self).__init__()
         self.kernel_size = kernel_size
+        self.pre_kernel_size = pre_kernel_size
 
-        self.kernel_total = nn.Parameter(torch.rand(1, 1, kernel_size), requires_grad=True)
+        self.kernel_total = nn.Parameter(torch.rand(1, 1, kernel_size-pre_kernel_size), requires_grad=True)
         # self.kernel_previous = nn.Parameter(torch.rand(1, 1, kernel_size), requires_grad=True)
         # self.kernel_behind = nn.Parameter(torch.rand(1, 1, kernel_size), requires_grad=True)
         # nn.GELU(),
@@ -546,14 +547,14 @@ class FeedForwardNet_Pre(nn.Module):
         :return:
         """
         matrix_previous = []
-        for i in range(self.kernel_size):
+        for i in np.arange(self.pre_kernel_size, self.kernel_size):
             rolled_tensor = torch.roll(x, shifts=i, dims=2)
             rolled_tensor[:, :, :i] = 0
             matrix_previous.append(rolled_tensor)
 
         matrix_total = torch.stack(matrix_previous, dim=-1).to(x.device)
         average_previous = (matrix_total * self.kernel_total).sum(dim=-1)
-        return average_previous
+        return average_previous + x
 
 
 class FeedForwardNet(nn.Module):
@@ -608,9 +609,9 @@ class TransformerEncoderBlock(nn.Module):
 
         if isinstance(token_kernel_size, list):
             self.transformer_layers = nn.ModuleList()
-            for kernel_size in token_kernel_size:
+            for i, kernel_size in enumerate(token_kernel_size):
                 self.transformer_layers.append(TransformerEncoder(num_tokens=num_tokens,
-                    token_kernel_size=kernel_size, num_channels=num_channels,
+                    token_kernel_size=kernel_size, num_channels=num_channels, pre_kernel_size=0 if i==0 else token_kernel_size[i-1],
                                                      dropout=dropout))
         elif isinstance(token_kernel_size, int):
             self.transformer_layers=nn.ModuleList([TransformerEncoder(num_tokens=num_tokens,
@@ -635,7 +636,7 @@ class TransformerEncoderBlock(nn.Module):
 class TransformerEncoder(nn.Module):
 
     def __init__(self, num_tokens: int, num_channels: int, token_kernel_size: int,
-                 dropout: float, num_heads: int = 1, channel_kernel_size: int = 1,
+                 dropout: float, pre_kernel_size: int = 0, num_heads: int = 1, channel_kernel_size: int = 1,
                  token_dim_expansion_factor: float = 0.5,
                  channel_dim_expansion_factor: float = 4.0):
         """
@@ -652,6 +653,7 @@ class TransformerEncoder(nn.Module):
         self.token_norm = nn.LayerNorm(num_tokens)
 
         self.token_feedforward = FeedForwardNet_Pre(kernel_size=token_kernel_size, num_channels=num_channels,
+                                                    pre_kernel_size=pre_kernel_size,
                                                               dropout=dropout)
 
         # self.token_feedforward = FeedForwardNet(input_dim=num_tokens, dim_expansion_factor=token_dim_expansion_factor,
