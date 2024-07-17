@@ -532,7 +532,7 @@ class FeedForwardNet_Pre(nn.Module):
         self.kernel_size = kernel_size
         self.pre_kernel_size = pre_kernel_size
 
-        self.kernel_total = nn.Parameter(torch.rand(1, 1, 3), requires_grad=True)
+        self.kernel_total = nn.Parameter(torch.rand(1, 1, kernel_size-pre_kernel_size), requires_grad=True)
         # self.kernel_previous = nn.Parameter(torch.rand(1, 1, kernel_size), requires_grad=True)
         # self.kernel_behind = nn.Parameter(torch.rand(1, 1, kernel_size), requires_grad=True)
         # nn.GELU(),
@@ -546,22 +546,15 @@ class FeedForwardNet_Pre(nn.Module):
         :param x: Tensor, shape (*, input_dim)
         :return:
         """
-        matrix_previous = [x]
-        # for i in np.arange(self.pre_kernel_size, self.kernel_size):
-        #     rolled_tensor = torch.roll(x, shifts=i, dims=2)
-        #     rolled_tensor[:, :, :i] = 0
-        #     matrix_previous.append(rolled_tensor)
-        rolled_tensor = torch.roll(x, shifts=self.kernel_size, dims=2)
-        rolled_tensor[:, :, :self.kernel_size] = 0
-        matrix_previous.append(rolled_tensor)
-
-        rolled_tensor = torch.roll(x, shifts=-self.kernel_size, dims=2)
-        rolled_tensor[:, :, -self.kernel_size:] = 0
-        matrix_previous.append(rolled_tensor)
+        matrix_previous = []
+        for i in np.arange(self.pre_kernel_size, self.kernel_size):
+            rolled_tensor = torch.roll(x, shifts=i, dims=2)
+            rolled_tensor[:, :, :i] = 0
+            matrix_previous.append(rolled_tensor)
 
         matrix_total = torch.stack(matrix_previous, dim=-1).to(x.device)
         average_previous = (matrix_total * self.kernel_total).sum(dim=-1)
-        return average_previous
+        return average_previous + x
 
 
 class FeedForwardNet(nn.Module):
@@ -632,7 +625,6 @@ class TransformerEncoderBlock(nn.Module):
         :param input_tensor: Tensor, shape (batch_size, num_tokens, num_channels)
         :return:
         """
-        # out_tensor = input_tensor.clone()
         for encoder in self.transformer_layers:
             input_tensor = self.drop(encoder(input_tensor))
             # input_tensor = encoder(input_tensor)
@@ -684,7 +676,6 @@ class TransformerEncoder(nn.Module):
         batch_size, num_tokens, num_channels = input_tensor.shape
         # hidden_tensor = input_tensor.permute(0, 2, 1).reshape(batch_size * num_channels, 1, num_tokens) # todo: 不加norm效果更好一些
         hidden_tensor = input_tensor.permute(0, 2, 1)
-        # hidden_tensor = self.token_norm(input_tensor.permute(0, 2, 1))
 
         hidden_tensor = self.token_feedforward(hidden_tensor).permute(0, 2, 1)
 
