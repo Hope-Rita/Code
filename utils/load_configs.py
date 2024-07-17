@@ -245,8 +245,8 @@ def load_link_prediction_best_configs(args: argparse.Namespace):
         else:
             args.dropout = 0.1
     elif args.model_name == 'DyGFormer_Pool':
-        args.num_layers = 4
-        args.pool_kernel_size = 1
+        args.num_layers = 1
+        args.pool_kernel_size = [1, 2, 4]
         # args.max_input_sequence_length = 512
         # args.patch_size = 16
         # args.pool_kernel_size = [1,3,7]
@@ -256,15 +256,12 @@ def load_link_prediction_best_configs(args: argparse.Namespace):
         elif args.dataset_name in ['mooc', 'enron', 'Flights', 'USLegis', 'UNtrade']:
             args.max_input_sequence_length = 256
             args.patch_size = 8
-            # args.pool_kernel_size = [1,3]
         elif args.dataset_name in ['lastfm']:
             args.max_input_sequence_length = 512
             args.patch_size = 16
-            # args.pool_kernel_size = [1,3,7]
         elif args.dataset_name in ['CanParl']:
             args.max_input_sequence_length = 2048
             args.patch_size = 64
-            # args.pool_kernel_size = [1,3,7,15,31]
         elif args.dataset_name in ['UNvote']:
             args.max_input_sequence_length = 128
             args.patch_size = 4
@@ -280,7 +277,7 @@ def load_link_prediction_best_configs(args: argparse.Namespace):
             args.dropout = 0.1
     elif args.model_name == 'CAWN_Pool':
         args.time_scaling_factor = 1e-6
-        args.pool_kernel_size = 3
+        args.pool_kernel_size = [1, 2, 4, 8]
         # args.pool_kernel_size = [1, 3, 7, 15, 31, 63]
         if args.dataset_name in ['mooc', 'SocialEvo', 'uci', 'Flights', 'UNtrade', 'UNvote', 'Contacts']:
             args.num_neighbors = 64
@@ -325,7 +322,7 @@ def load_link_prediction_best_configs(args: argparse.Namespace):
             elif args.dataset_name in ['lastfm', 'CanParl']:
                 args.dropout = 0.3
             elif args.dataset_name in ['enron', 'SocialEvo']:
-                args.dropout = 0.1
+                args.dropout = 0.0
             else:
                 args.dropout = 0.3
         if args.model_name in ['TGN_Pool', 'DyRep_Pool']:
@@ -337,7 +334,7 @@ def load_link_prediction_best_configs(args: argparse.Namespace):
         args.num_neighbors = 20
         # args.num_neighbors = 128
         args.num_layers = 2
-        args.pool_kernel_size = [1, 2, 4]
+        args.pool_kernel_size = [1, 2, 4, 8]
         # args.pool_kernel_size = [1, 3, 7, 15, 31, 63]
         # args.num_heads = 1
         if args.dataset_name in ['SocialEvo', 'uci', 'UNtrade', 'UNvote', 'Contacts']:

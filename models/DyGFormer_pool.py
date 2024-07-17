@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import MultiheadAttention
-from models.modules import Pooling, MultiPooling_general, TransformerEncoder
+from models.modules import Pooling, MultiPooling_general, TransformerEncoder, TransformerEncoderBlock
 
 from models.modules import TimeEncoder
 from utils.utils import NeighborSampler
@@ -67,13 +67,21 @@ class DyGFormer_Pool(nn.Module):
 
         self.num_channels = 4
 
-        self.transformers = nn.ModuleList([
-            TransformerEncoder(num_tokens=2 * self.max_input_sequence_length // self.patch_size,
+        self.src_transformers = nn.ModuleList([
+            TransformerEncoderBlock(num_tokens=self.max_input_sequence_length // self.patch_size,
                                num_channels=self.num_channels * self.channel_embedding_dim, dropout=self.dropout,
                                channel_dim_expansion_factor=4.0,
                                channel_kernel_size=1, token_kernel_size=self.pool_kernel_size)
             for _ in range(self.num_layers)
         ])
+
+        # self.dst_transformers = nn.ModuleList([
+        #     TransformerEncoderBlock(num_tokens=self.max_input_sequence_length // self.patch_size,
+        #                             num_channels=self.num_channels * self.channel_embedding_dim, dropout=self.dropout,
+        #                             channel_dim_expansion_factor=4.0,
+        #                             channel_kernel_size=1, token_kernel_size=self.pool_kernel_size)
+        #     for _ in range(self.num_layers)
+        # ])
 
         self.output_layer = nn.Linear(in_features=self.num_channels * self.channel_embedding_dim,
                                       out_features=self.node_feat_dim, bias=True)
@@ -203,8 +211,17 @@ class DyGFormer_Pool(nn.Module):
             [src_patches_nodes_neighbor_co_occurrence_features, dst_patches_nodes_neighbor_co_occurrence_features],
             dim=1)
 
+        # patches_src_position_features = self.position_encoding(torch.zeros(src_patches_nodes_edge_raw_features.shape[:2], dtype=torch.int).to(patches_nodes_edge_raw_features.device))
+        # patches_dst_position_features = self.position_encoding(
+        #     torch.ones(dst_patches_nodes_edge_raw_features.shape[:2], dtype=torch.int).to(patches_nodes_edge_raw_features.device))
+
+        # patches_nodes_position_features = torch.cat(
+        #     [patches_src_position_features, patches_dst_position_features],
+        #     dim=1)
+
         patches_data = [patches_nodes_neighbor_node_raw_features, patches_nodes_edge_raw_features,
-                        patches_nodes_neighbor_time_features, patches_nodes_neighbor_co_occurrence_features]
+                        patches_nodes_neighbor_time_features, patches_nodes_neighbor_co_occurrence_features,
+                        ]
         # Tensor, shape (batch_size, src_num_patches + dst_num_patches, num_channels, channel_embedding_dim)
         patches_data = torch.stack(patches_data, dim=2)
         # Tensor, shape (batch_size, src_num_patches + dst_num_patches, num_channels * channel_embedding_dim)
@@ -212,13 +229,21 @@ class DyGFormer_Pool(nn.Module):
                                             self.num_channels * self.channel_embedding_dim)
 
         # Tensor, shape (batch_size, src_num_patches + dst_num_patches, num_channels * channel_embedding_dim)
-        for transformer in self.transformers:
-            patches_data = transformer(patches_data)
+        # for transformer in self.transformers:
+        #     patches_data = transformer(patches_data)
+
+
 
         # src_patches_data, Tensor, shape (batch_size, src_num_patches, num_channels * channel_embedding_dim)
         src_patches_data = patches_data[:, : src_num_patches, :]
         # dst_patches_data, Tensor, shape (batch_size, dst_num_patches, num_channels * channel_embedding_dim)
         dst_patches_data = patches_data[:, src_num_patches: src_num_patches + dst_num_patches, :]
+
+        # for src_transformer, dst_transformer in zip(self.src_transformers, self.dst_transformers):
+        for transformer in self.src_transformers:
+            src_patches_data = transformer(src_patches_data)
+            dst_patches_data = transformer(dst_patches_data)
+
         # src_patches_data, Tensor, shape (batch_size, num_channels * channel_embedding_dim)
         src_patches_data = torch.mean(src_patches_data, dim=1)
         # dst_patches_data, Tensor, shape (batch_size, num_channels * channel_embedding_dim)

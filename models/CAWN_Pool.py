@@ -3,7 +3,7 @@ import numpy as np
 import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
-from models.modules import TimeEncoder
+from models.modules import TimeEncoder, TransformerEncoderBlock
 
 from models.modules import TransformerEncoder
 from utils.utils import NeighborSampler
@@ -131,8 +131,7 @@ class CAWN_Pool(nn.Module):
         # Tensor, shape (batch_size, self.output_dim)
         final_node_embeddings = self.walk_encoder(neighbor_raw_features=neighbor_raw_features, neighbor_time_features=neighbor_time_features,
                                                   edge_features=edge_features, neighbor_position_features=neighbor_position_features,
-                                                  walks_valid_lengths=walks_valid_lengths, neighbor_times=
-                                                  torch.from_numpy(nodes_neighbor_delta_times[:, :, 1]).to(edge_features.device).to(torch.float32))
+                                                  walks_valid_lengths=walks_valid_lengths)
         return final_node_embeddings
 
     def convert_format_from_tree_to_array(self, node_ids: np.ndarray, node_interact_times: np.ndarray, node_multi_hop_graphs: tuple, num_neighbors: int = 20):
@@ -329,7 +328,7 @@ class WalkEncoder(nn.Module):
 
         # self.attention_dim = self.feature_encoder.model_dim + self.position_encoder.model_dim
         # self.transformer_encoder = TransformerEncoder(pool_kernel_size = self.pool_kernel_size, attention_dim=self.attention_dim, num_heads=self.num_walk_heads, dropout=self.dropout)
-        self.transformer_encoder = TransformerEncoder(num_tokens=self.num_neighbors,
+        self.transformer_encoder = TransformerEncoderBlock(num_tokens=self.num_neighbors,
                                                                       num_channels=self.attention_dim,
                                                                       token_kernel_size=pool_kernel_size,
                                                                       dropout=dropout)
@@ -343,7 +342,7 @@ class WalkEncoder(nn.Module):
         ])
 
     def forward(self, neighbor_raw_features: torch.Tensor, neighbor_time_features: torch.Tensor, edge_features: torch.Tensor,
-                neighbor_position_features: torch.Tensor, walks_valid_lengths: np.ndarray, neighbor_times: torch.Tensor):
+                neighbor_position_features: torch.Tensor, walks_valid_lengths: np.ndarray):
         """
         first encode each random walk by BiLSTM and then aggregate all the walks by the self-attention in Transformer
         :param neighbor_raw_features: Tensor, shape (batch_size, num_neighbors ** self.walk_length, self.walk_length + 1, node_feat_dim)
@@ -365,7 +364,8 @@ class WalkEncoder(nn.Module):
         # # Tensor, shape (batch_size, num_neighbors ** self.walk_length, self.attention_dim)
         combined_features = self.projection_layers[0](combined_features)
         # Tensor, shape (batch_size, self.feature_encoder.model_dim + self.position_encoder.model_dim)
-        combined_features = self.transformer_encoder(combined_features, neighbor_times).mean(dim=1)
+        # combined_features = self.transformer_encoder(combined_features, neighbor_times).mean(dim=1)
+        combined_features = self.transformer_encoder(combined_features).mean(dim=1)
 
         # # Tensor, shape (batch_size, num_neighbors ** self.walk_length, self.attention_dim)
         # combined_features = self.projection_layers[0](combined_features)

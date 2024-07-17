@@ -10,8 +10,7 @@ from models.modules import TimeEncoder, MergeLayer, TransformerEncoder, Transfor
 class MemoryModel_Pool(torch.nn.Module):
 
     def __init__(self, node_raw_features: np.ndarray, edge_raw_features: np.ndarray, neighbor_sampler: NeighborSampler, pool_kernel_size: int,
-                 time_feat_dim: int, num_neighbors: int=20, model_name: str = 'TGN_Pool', num_layers: int = 2,
-                 num_heads: int = 2, dropout: float = 0.1,
+                 time_feat_dim: int, num_neighbors: int=20, model_name: str = 'TGN_Pool', num_layers: int = 2, num_heads: int = 2, dropout: float = 0.1,
                  src_node_mean_time_shift: float = 0.0, src_node_std_time_shift: float = 1.0, dst_node_mean_time_shift_dst: float = 0.0,
                  dst_node_std_time_shift: float = 1.0, device: str = 'cpu'):
         """
@@ -675,8 +674,8 @@ class GraphAttentionEmbedding(nn.Module):
 
             # Tensor, output shape (batch_size, node_feat_dim)
             # follow the TGN paper, use merge layer to combine 1) the attention results, and 2) node raw feature + node memory
-            # output = self.merge_layers[current_layer_num - 1](input_1=output, input_2=self.channel_norm(node_conv_features))
-            output = self.merge_layers[current_layer_num - 1](input_1=output, input_2=node_conv_features)
+            output = self.merge_layers[current_layer_num - 1](input_1=output, input_2=self.channel_norm(node_conv_features))
+            # output = self.merge_layers[current_layer_num - 1](input_1=output, input_2=node_conv_features)
 
             return output
 
