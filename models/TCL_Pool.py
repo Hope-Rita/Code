@@ -57,7 +57,7 @@ class TCL_Pool(nn.Module):
                                num_channels=self.node_feat_dim,
                                token_kernel_size=pool_kernel_size,
                                dropout=dropout)
-            for _ in range(1)
+            for _ in range(self.num_layers)
         ])
 
         self.cross_transformers = nn.ModuleList([
