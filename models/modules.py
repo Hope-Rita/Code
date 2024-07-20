@@ -531,7 +531,8 @@ class FeedForwardNet_Pre(nn.Module):
         super(FeedForwardNet_Pre, self).__init__()
         self.kernel_size = kernel_size
         self.pre_kernel_size = pre_kernel_size
-        self.random_R = nn.Parameter(torch.rand(num_channels, 6//2), requires_grad=False)
+        rand_matrix = torch.rand(num_channels, 6//2)
+        self.random_R = nn.Parameter(torch.nn.functional.normalize(rand_matrix, p=2, dim=1), requires_grad=False)
         self.kernel_total = nn.Parameter(torch.rand(1, 1, kernel_size-pre_kernel_size+1), requires_grad=True)
         # self.kernel_previous = nn.Parameter(torch.rand(1, 1, kernel_size), requires_grad=True)
         # self.kernel_behind = nn.Parameter(torch.rand(1, 1, kernel_size), requires_grad=True)
@@ -547,21 +548,29 @@ class FeedForwardNet_Pre(nn.Module):
         :return:
         """
         seq_rep = x.transpose(1,2)
-        hash_rep = torch.matmul(seq_rep, self.random_R)
-        total_hash = torch.cat([hash_rep, -hash_rep], dim=-1)
-        hash_index = torch.argmax(total_hash, dim=-1)
-        _, indices = torch.sort(hash_index, dim=-1)
+        hash_rep = torch.matmul(seq_rep, self.random_R) # B * L * D
+        total_hash = torch.cat([hash_rep, -hash_rep], dim=-1) # B * L * 2D
+        # print(total_hash[0])
+        hash_index = torch.argmax(total_hash, dim=-1) # B * L
+        values, indices = torch.sort(hash_index, dim=-1) # B * L
         indices = indices.unsqueeze(dim=-1)
-        new_x = torch.gather(seq_rep, 1, indices).transpose(1,2)
+        new_x = torch.gather(seq_rep, 1, indices).transpose(1,2) # B * M * L
+
 
         matrix_previous = []
+        values_matrix = []
         for i in np.arange(self.pre_kernel_size, self.kernel_size):
-            rolled_tensor = torch.roll(new_x, shifts=i, dims=2)
+            rolled_tensor = torch.roll(new_x, shifts=i, dims=2) # B * M * L
+            rolled_values = torch.roll(values.unsqueeze(dim=1), shifts=i, dims=2) # B * 1 * L
             rolled_tensor[:, :, :i] = 0
             matrix_previous.append(rolled_tensor)
+            values_matrix.append(rolled_values)
         matrix_previous.append(new_x)
-        matrix_total = torch.stack(matrix_previous, dim=-1).to(x.device)
-        average_previous = (matrix_total * self.kernel_total).sum(dim=-1)
+        values_matrix.append(new_x.new_zeros(values.unsqueeze(dim=1).shape))
+        matrix_total = torch.stack(matrix_previous, dim=-1).to(x.device) # B * M * L * k
+        values_total = torch.softmax(torch.stack(values_matrix, dim=-1).to(x.device), dim=-1)
+        average_previous = (matrix_total * values_total).sum(dim=-1)
+        # average_previous = (matrix_total * self.kernel_total).sum(dim=-1)
         return average_previous
 
 
