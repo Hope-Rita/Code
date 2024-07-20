@@ -531,7 +531,7 @@ class FeedForwardNet_Pre(nn.Module):
         super(FeedForwardNet_Pre, self).__init__()
         self.kernel_size = kernel_size
         self.pre_kernel_size = pre_kernel_size
-        self.random_R = nn.Parameter(torch.rand(num_channels, 10//2), requires_grad=False)
+        self.random_R = nn.Parameter(torch.rand(num_channels, 6//2), requires_grad=False)
         self.kernel_total = nn.Parameter(torch.rand(1, 1, kernel_size-pre_kernel_size+1), requires_grad=True)
         # self.kernel_previous = nn.Parameter(torch.rand(1, 1, kernel_size), requires_grad=True)
         # self.kernel_behind = nn.Parameter(torch.rand(1, 1, kernel_size), requires_grad=True)

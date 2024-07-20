@@ -306,10 +306,10 @@ def load_link_prediction_best_configs(args: argparse.Namespace):
         else:
             args.sample_neighbor_strategy = 'recent'
     elif args.model_name in ['DyRep_Pool', 'TGN_Pool']:
-        args.num_neighbors = 10
+        args.num_neighbors = 20
         args.num_layers = 1
         args.num_heads = 1
-        args.pool_kernel_size = [2, 4, 8]
+        args.pool_kernel_size = [1, 2, 4, 8]
         if args.model_name == 'DyRep_Pool':
             if args.dataset_name in ['mooc', 'lastfm', 'enron', 'uci', 'CanParl', 'USLegis', 'Contacts']:
                 args.dropout = 0.0
