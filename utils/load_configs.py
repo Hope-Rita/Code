@@ -49,7 +49,7 @@ def get_link_prediction_args(is_evaluation: bool = False):
     parser.add_argument('--kernel_s', type=int, default=3, help='ratio of validation set')
     parser.add_argument('--test_ratio', type=float, default=0.15, help='ratio of test set')
     parser.add_argument('--num_runs', type=int, default=5, help='number of runs')
-    parser.add_argument('--test_interval_epochs', type=int, default=1, help='how many epochs to perform testing once')
+    parser.add_argument('--test_interval_epochs', type=int, default=5, help='how many epochs to perform testing once')
     parser.add_argument('--negative_sample_strategy', type=str, default='random', choices=['random', 'historical', 'inductive'],
                         help='strategy for the negative edge sampling')
     parser.add_argument('--identify', type=str, default='', help='the name add in the folder')
@@ -309,7 +309,7 @@ def load_link_prediction_best_configs(args: argparse.Namespace):
         args.num_neighbors = 10
         args.num_layers = 1
         args.num_heads = 1
-        args.pool_kernel_size = [1, 2, 4, 8]
+        args.pool_kernel_size = [1, 2]
         if args.model_name == 'DyRep_Pool':
             if args.dataset_name in ['mooc', 'lastfm', 'enron', 'uci', 'CanParl', 'USLegis', 'Contacts']:
                 args.dropout = 0.0
@@ -334,7 +334,7 @@ def load_link_prediction_best_configs(args: argparse.Namespace):
         args.num_neighbors = 20
         # args.num_neighbors = 128
         args.num_layers = 2
-        args.pool_kernel_size = [1, 2, 4]
+        args.pool_kernel_size = [3]
         # args.pool_kernel_size = [1, 3, 7, 15, 31, 63]
         # args.num_heads = 1
         if args.dataset_name in ['SocialEvo', 'uci', 'UNtrade', 'UNvote', 'Contacts']:
