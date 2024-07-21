@@ -309,7 +309,7 @@ def load_link_prediction_best_configs(args: argparse.Namespace):
         args.num_neighbors = 10
         args.num_layers = 1
         args.num_heads = 1
-        args.pool_kernel_size = [1, 2, 4, 8]
+        args.pool_kernel_size = [1, 2, 4]
         if args.model_name == 'DyRep_Pool':
             if args.dataset_name in ['mooc', 'lastfm', 'enron', 'uci', 'CanParl', 'USLegis', 'Contacts']:
                 args.dropout = 0.0
@@ -334,7 +334,7 @@ def load_link_prediction_best_configs(args: argparse.Namespace):
         args.num_neighbors = 20
         # args.num_neighbors = 128
         args.num_layers = 2
-        args.pool_kernel_size = [1, 2, 4]
+        args.pool_kernel_size = [1]
         # args.pool_kernel_size = [1, 3, 7, 15, 31, 63]
         # args.num_heads = 1
         if args.dataset_name in ['SocialEvo', 'uci', 'UNtrade', 'UNvote', 'Contacts']:
