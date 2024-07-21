@@ -44,7 +44,7 @@ def get_link_prediction_args(is_evaluation: bool = False):
     parser.add_argument('--num_epochs', type=int, default=200, help='number of epochs')
     parser.add_argument('--optimizer', type=str, default='Adam', choices=['SGD', 'Adam', 'RMSprop'], help='name of optimizer')
     parser.add_argument('--weight_decay', type=float, default=0.0, help='weight decay')
-    parser.add_argument('--patience', type=int, default=15, help='patience for early stopping')
+    parser.add_argument('--patience', type=int, default=20, help='patience for early stopping')
     parser.add_argument('--val_ratio', type=float, default=0.15, help='ratio of validation set')
     parser.add_argument('--kernel_s', type=int, default=3, help='ratio of validation set')
     parser.add_argument('--test_ratio', type=float, default=0.15, help='ratio of test set')
@@ -309,7 +309,7 @@ def load_link_prediction_best_configs(args: argparse.Namespace):
         args.num_neighbors = 10
         args.num_layers = 1
         args.num_heads = 1
-        args.pool_kernel_size = [1, 2, 4]
+        args.pool_kernel_size = [1, 2, 4, 8]
         if args.model_name == 'DyRep_Pool':
             if args.dataset_name in ['mooc', 'lastfm', 'enron', 'uci', 'CanParl', 'USLegis', 'Contacts']:
                 args.dropout = 0.0
@@ -322,7 +322,7 @@ def load_link_prediction_best_configs(args: argparse.Namespace):
             elif args.dataset_name in ['lastfm', 'CanParl']:
                 args.dropout = 0.3
             elif args.dataset_name in ['enron', 'SocialEvo']:
-                args.dropout = 0.1
+                args.dropout = 0.0
             else:
                 args.dropout = 0.3
         if args.model_name in ['TGN_Pool', 'DyRep_Pool']:
@@ -334,7 +334,7 @@ def load_link_prediction_best_configs(args: argparse.Namespace):
         args.num_neighbors = 20
         # args.num_neighbors = 128
         args.num_layers = 2
-        args.pool_kernel_size = [1]
+        args.pool_kernel_size = [1, 2, 4]
         # args.pool_kernel_size = [1, 3, 7, 15, 31, 63]
         # args.num_heads = 1
         if args.dataset_name in ['SocialEvo', 'uci', 'UNtrade', 'UNvote', 'Contacts']:
