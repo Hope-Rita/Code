@@ -564,7 +564,7 @@ class FeedForwardNet_Pre(nn.Module):
         # values_total = torch.softmax(torch.stack(values_matrix, dim=-1).to(x.device), dim=-1)
         # average_previous = (matrix_total * values_total).sum(dim=-1)
         average_previous = (matrix_total * self.kernel_total).sum(dim=-1)
-        return average_previous + x, s, z
+        return average_previous, s, z
 
 
 class FeedForwardNet(nn.Module):
