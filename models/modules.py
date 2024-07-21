@@ -566,7 +566,7 @@ class FeedForwardNet_Pre(nn.Module):
             matrix_previous.append(rolled_tensor)
             values_matrix.append(rolled_values)
         matrix_previous.append(new_x)
-        values_matrix.append(new_x.new_zeros(values.unsqueeze(dim=1).shape))
+        values_matrix.append(new_x.new_ones(values.unsqueeze(dim=1).shape))
         matrix_total = torch.stack(matrix_previous, dim=-1).to(x.device) # B * M * L * k
         values_total = torch.softmax(torch.stack(values_matrix, dim=-1).to(x.device), dim=-1)
         average_previous = (matrix_total * values_total).sum(dim=-1)
