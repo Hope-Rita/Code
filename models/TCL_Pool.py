@@ -148,11 +148,11 @@ class TCL_Pool(nn.Module):
         for transformer, cross_transformer in zip(self.transformers, self.cross_transformers):
             # self-attention block
             # Tensor, shape (batch_size, num_neighbors + 1, node_feat_dim)
-            # src_node_features = transformer(src_node_features, torch.from_numpy(node_interact_times[:, np.newaxis] - src_neighbor_times).to(src_node_features.device).to(torch.float32))
-            src_node_features = transformer(src_node_features)
+            src_node_features = transformer(src_node_features, torch.from_numpy(src_neighbor_times).to(src_node_features.device).to(torch.float32))
+            # src_node_features = transformer(src_node_features)
             # Tensor, shape (batch_size, num_neighbors + 1, node_feat_dim)
-            # dst_node_features = transformer(dst_node_features, torch.from_numpy(node_interact_times[:, np.newaxis] - dst_neighbor_times).to(src_node_features.device).to(torch.float32))
-            dst_node_features = transformer(dst_node_features)
+            dst_node_features = transformer(dst_node_features, torch.from_numpy(dst_neighbor_times).to(src_node_features.device).to(torch.float32))
+            # dst_node_features = transformer(dst_node_features)
 
             # cross-attention block
             # Tensor, shape (batch_size, num_neighbors + 1, node_feat_dim)

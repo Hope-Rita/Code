@@ -535,7 +535,8 @@ class FeedForwardNet_Pre(nn.Module):
         self.pre_kernel_size = pre_kernel_size
         # rand_matrix = torch.randn(num_channels, 6 // 2)
         # self.random_R = nn.Parameter(torch.nn.functional.normalize(rand_matrix, p=2, dim=1), requires_grad=False)
-        self.kernel_total = nn.Parameter(torch.rand(1, 1, kernel_size - pre_kernel_size), requires_grad=True)
+        self.kernel_total = nn.Parameter(torch.rand(1, 1, kernel_size - pre_kernel_size + 1), requires_grad=True)
+        self.alpha = nn.Parameter(torch.rand(1), requires_grad=True)
         # self.kernel_previous = nn.Parameter(torch.rand(1, 1, kernel_size), requires_grad=True)
         # self.kernel_behind = nn.Parameter(torch.rand(1, 1, kernel_size), requires_grad=True)
         # nn.GELU(),
@@ -543,28 +544,33 @@ class FeedForwardNet_Pre(nn.Module):
         # nn.AvgPool1d(kernel_size, stride=1, padding=kernel_size // 2, count_include_pad=False),
         # nn.Dropout(dropout))
 
-    def forward(self, s, z, x: torch.Tensor):
+    def forward(self, x: torch.Tensor, delta_time):
         """
         feed forward net forward process
         :param x: Tensor, shape (*, input_dim)
         :return:
         """
         matrix_previous = []
+        delta_times = [delta_time]
         # values_matrix = []
         for i in np.arange(self.pre_kernel_size, self.kernel_size):
-            rolled_tensor = torch.roll(x, shifts=i, dims=2)  # B * M * L
-            # rolled_values = torch.roll(value_softmax.unsqueeze(dim=1), shifts=i, dims=2)  # B * 1 * L
+            delt_rolled = torch.roll(delta_time, shifts=i, dims=1)
+            rolled_tensor = torch.roll(x, shifts=i, dims=2)
             rolled_tensor[:, :, :i] = 0
+            delt_rolled[:, :i] = -1e20
             matrix_previous.append(rolled_tensor)
-            # values_matrix.append(rolled_values)
-        # matrix_previous.append(new_x)
-        # values_matrix.append(new_x.new_ones(values.unsqueeze(dim=1).shape))
+            delta_times.append(delt_rolled - delta_time)
+
+        matrix_previous.append(x)
+        delta_times.append(delta_time - delta_time)
+
         matrix_total = torch.stack(matrix_previous, dim=-1).to(x.device)  # B * M * L * k
-        # values_total = torch.stack(values_matrix, dim=-1).to(x.device)
-        # values_total = torch.softmax(torch.stack(values_matrix, dim=-1).to(x.device), dim=-1)
-        # average_previous = (matrix_total * values_total).sum(dim=-1)
-        average_previous = (matrix_total * self.kernel_total).sum(dim=-1)
-        return average_previous, s, z
+        delta_times = torch.stack(delta_times[1:], dim=-1).to(x.device)
+        delta_times = torch.softmax(delta_times, dim=-1).unsqueeze(dim=1) # B * L * 3
+
+        param = self.alpha * self.kernel_total + (1 - self.alpha) * delta_times
+        average_previous = (matrix_total * param).sum(dim=-1)
+        return average_previous
 
 
 class FeedForwardNet(nn.Module):
@@ -623,7 +629,7 @@ class TransformerEncoderBlock(nn.Module):
                 self.transformer_layers.append(TransformerEncoder(num_tokens=num_tokens,
                                                                   token_kernel_size=kernel_size,
                                                                   num_channels=num_channels,
-                                                                  pre_kernel_size=0 if i == 0 else token_kernel_size[
+                                                                  pre_kernel_size=1 if i == 0 else token_kernel_size[
                                                                       i - 1],
                                                                   dropout=dropout))
         elif isinstance(token_kernel_size, int):
@@ -633,26 +639,25 @@ class TransformerEncoderBlock(nn.Module):
                                                                         dropout=dropout)])
         self.drop = nn.Dropout(self.dropout)
 
-    def forward(self, input_tensor: torch.Tensor):
+    def forward(self, input_tensor: torch.Tensor, delta_time):
         """
         mlp mixer to compute over tokens and channels
+        :param delta_time:
         :param input_tensor: Tensor, shape (batch_size, num_tokens, num_channels)
         :return:
         """
-        s = input_tensor.new_zeros(input_tensor.shape[0]).reshape(-1, 1, 1)
-        z = input_tensor.new_zeros(input_tensor.shape[:2]).unsqueeze(dim=-1)
+
         for encoder in self.transformer_layers:
-            input_tensor, new_s, new_z = encoder(s, z, input_tensor)
+            input_tensor = encoder(input_tensor, delta_time)
             input_tensor = self.drop(input_tensor)
             # input_tensor = encoder(input_tensor)
-            s, z = new_s, new_z
         return input_tensor
 
 
 class TransformerEncoder(nn.Module):
 
     def __init__(self, num_tokens: int, num_channels: int, token_kernel_size: int,
-                 dropout: float, pre_kernel_size: int = 0, num_heads: int = 1, channel_kernel_size: int = 1,
+                 dropout: float, pre_kernel_size: int = 1, num_heads: int = 1, channel_kernel_size: int = 1,
                  token_dim_expansion_factor: float = 0.5,
                  channel_dim_expansion_factor: float = 4.0):
         """
@@ -679,8 +684,8 @@ class TransformerEncoder(nn.Module):
                                                   dim_expansion_factor=channel_dim_expansion_factor,
                                                   dropout=dropout, output_dim=num_channels)
 
-    # def forward(self, input_tensor: torch.Tensor, delta_times: torch.Tensor=None):
-    def forward(self, s, z, input_tensor: torch.Tensor):
+    def forward(self, input_tensor: torch.Tensor, delta_times: torch.Tensor=None):
+    # def forward(self, input_tensor: torch.Tensor):
         """
         mlp mixer to compute over tokens and channels
         :param input_tensor: Tensor, shape (batch_size, num_tokens, num_channels)
@@ -692,7 +697,7 @@ class TransformerEncoder(nn.Module):
         batch_size, num_tokens, num_channels = input_tensor.shape
         # hidden_tensor = input_tensor.permute(0, 2, 1).reshape(batch_size * num_channels, 1, num_tokens) # todo: 不加norm效果更好一些
         hidden_tensor = input_tensor.permute(0, 2, 1)
-        hidden_tensor, new_s, new_z = self.token_feedforward(s, z, hidden_tensor)
+        hidden_tensor = self.token_feedforward(hidden_tensor, delta_times)
         hidden_tensor = hidden_tensor.permute(0, 2, 1)
         # Tensor, shape (batch_size, num_tokens, num_channels), residual connection
         output_tensor = hidden_tensor + input_tensor
@@ -705,7 +710,7 @@ class TransformerEncoder(nn.Module):
         # Tensor, shape (batch_size, num_tokens, num_channels), residual connection
         output_tensor = hidden_tensor + output_tensor
 
-        return output_tensor, new_s, new_z
+        return output_tensor
 
 
 # # pool
