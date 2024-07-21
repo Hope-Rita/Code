@@ -533,12 +533,9 @@ class FeedForwardNet_Pre(nn.Module):
         super(FeedForwardNet_Pre, self).__init__()
         self.kernel_size = kernel_size
         self.pre_kernel_size = pre_kernel_size
-        self.q_linear = nn.Linear(num_channels, num_channels)
-        self.k_linear = nn.Linear(num_channels, num_channels)
-        self.v_linear = nn.Linear(num_channels, num_channels)
         # rand_matrix = torch.randn(num_channels, 6 // 2)
         # self.random_R = nn.Parameter(torch.nn.functional.normalize(rand_matrix, p=2, dim=1), requires_grad=False)
-        # self.kernel_total = nn.Parameter(torch.rand(1, 1, kernel_size - pre_kernel_size + 1), requires_grad=True)
+        self.kernel_total = nn.Parameter(torch.rand(1, 1, kernel_size - pre_kernel_size), requires_grad=True)
         # self.kernel_previous = nn.Parameter(torch.rand(1, 1, kernel_size), requires_grad=True)
         # self.kernel_behind = nn.Parameter(torch.rand(1, 1, kernel_size), requires_grad=True)
         # nn.GELU(),
@@ -547,51 +544,27 @@ class FeedForwardNet_Pre(nn.Module):
         # nn.Dropout(dropout))
 
     def forward(self, s, z, x: torch.Tensor):
-        dt = x.transpose(1, 2)
-        q = self.q_linear(dt)
-        k = self.k_linear(dt)
-        v = self.v_linear(dt)
-        phi_q = torch.nn.functional.elu(q) + 1  # B * L * M
-        phi_k = torch.nn.functional.elu(k) + 1  # B * L * M
-
-        total = (phi_k * v).sum(dim=-1, keepdims=True).sum(dim=1, keepdims=True)
-        s = s + total
-        z = z + phi_k.sum(dim=1, keepdim=True)
-        ans = phi_q * s / (phi_q * z).sum(dim=2, keepdims=True)
-        return ans.transpose(1, 2), s, z
-        # """
-        # feed forward net forward process
-        # :param x: Tensor, shape (*, input_dim)
-        # :return:
-        # """
-        # seq_rep = x.transpose(1, 2) # B * L * M
-        # hash_rep = torch.matmul(seq_rep, self.random_R)  # B * L * D
-        # total_hash = torch.cat([hash_rep, -hash_rep], dim=-1)  # B * L * 2D
-        # # print(total_hash[0])
-        # # hash_index = torch.argmax(total_hash, dim=-1)  # B * L
-        # value_softmax, hash_index = torch.max(total_hash, dim=-1)  # B * L
-        # # print(value_softmax[:2])
-        # values, indices = torch.sort(hash_index, dim=-1)  # B * L
-        # indices = indices.unsqueeze(dim=-1)
-        # new_x = torch.gather(seq_rep, 1, indices).transpose(1, 2)  # B * M * L
-        # # value_softmax = torch.gather(total_hash, 2, hash_index)  # B * L
-        #
-        # matrix_previous = []
-        # # values_matrix = []
-        # for i in np.arange(self.pre_kernel_size, self.kernel_size):
-        #     rolled_tensor = torch.roll(new_x, shifts=i, dims=2)  # B * M * L
-        #     # rolled_values = torch.roll(value_softmax.unsqueeze(dim=1), shifts=i, dims=2)  # B * 1 * L
-        #     rolled_tensor[:, :, :i] = 0
-        #     matrix_previous.append(rolled_tensor)
-        #     # values_matrix.append(rolled_values)
+        """
+        feed forward net forward process
+        :param x: Tensor, shape (*, input_dim)
+        :return:
+        """
+        matrix_previous = []
+        # values_matrix = []
+        for i in np.arange(self.pre_kernel_size, self.kernel_size):
+            rolled_tensor = torch.roll(x, shifts=i, dims=2)  # B * M * L
+            # rolled_values = torch.roll(value_softmax.unsqueeze(dim=1), shifts=i, dims=2)  # B * 1 * L
+            rolled_tensor[:, :, :i] = 0
+            matrix_previous.append(rolled_tensor)
+            # values_matrix.append(rolled_values)
         # matrix_previous.append(new_x)
-        # # values_matrix.append(new_x.new_ones(values.unsqueeze(dim=1).shape))
-        # matrix_total = torch.stack(matrix_previous, dim=-1).to(x.device)  # B * M * L * k
-        # # values_total = torch.stack(values_matrix, dim=-1).to(x.device)
-        # # values_total = torch.softmax(torch.stack(values_matrix, dim=-1).to(x.device), dim=-1)
-        # # average_previous = (matrix_total * values_total).sum(dim=-1)
-        # average_previous = (matrix_total * self.kernel_total).sum(dim=-1)
-        # return average_previous
+        # values_matrix.append(new_x.new_ones(values.unsqueeze(dim=1).shape))
+        matrix_total = torch.stack(matrix_previous, dim=-1).to(x.device)  # B * M * L * k
+        # values_total = torch.stack(values_matrix, dim=-1).to(x.device)
+        # values_total = torch.softmax(torch.stack(values_matrix, dim=-1).to(x.device), dim=-1)
+        # average_previous = (matrix_total * values_total).sum(dim=-1)
+        average_previous = (matrix_total * self.kernel_total).sum(dim=-1)
+        return average_previous + x, s, z
 
 
 class FeedForwardNet(nn.Module):
